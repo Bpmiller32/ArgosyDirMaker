@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<SmiSettings product="UK_RM_CM" name="UK_RM_CM" version="3.0" xmlns="http://www.raf.com/Smi">
+	<DirectoryDataFile  prefetchFile="true" loadCache="true" initialCacheSize="4096">UK_RM_CM\UK_RM_CM.smi</DirectoryDataFile>
+	<PatternsFile>UK_RM_CM\UK_RM_CM_Patterns.exml</PatternsFile>
+    <WordMatchTable>UK_RM_CM\UK_WordMatchTable.txt</WordMatchTable>
+    <IgnorableWordsTable>UK_RM_CM\UK_IgnorableWordsTable.txt</IgnorableWordsTable>
+    <PostProcessor>UkPostProcessor.dll</PostProcessor>
+</SmiSettings>

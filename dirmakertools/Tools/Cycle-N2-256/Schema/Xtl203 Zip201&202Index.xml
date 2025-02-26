@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XTLDB_TABLE_SCHEMA xmlns="http://www.raf.com/XTLDB" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.raf.com/XTLDB
+C:\Projects\XtlDB\Code\src\DataXtlDefs\XTLDB3~1.xsd">
+	<!--xtl # 203-->
+	<FixedInt name="ZipCode" bitSize="17"/>
+	<XtlPtr name="CSDetail" bitSize="1" xtlId="201"/>
+	<XtlPtr name="CSAlias" bitSize="1" xtlId="202"/>
+	<!-- <FixedInt name="PoBoxOnlyZip" bitSize="1"/> --> <!--bool-->
+</XTLDB_TABLE_SCHEMA>

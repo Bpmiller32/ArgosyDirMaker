@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<DirectoryDefinition name="UK_RM_CM" version="PAF Y11M10" xmlns="http://www.raf.com/Smi">
+  <DelimitedAddressFile fileName="BFPO.txt" fieldDelimiter="|" commentLinePrefix="//" charEncoding="Windows-1252">
+    <Field position="1" isQueryField="true">BFPO</Field>
+    <Field position="2" isQueryField="true" isCaseSensitive="true">Outcode</Field>
+    <Field position="3" isQueryField="true" isCaseSensitive="true">Sector</Field>
+    <Field position="4" isQueryField="true" isCaseSensitive="true">Incode</Field>
+    <Field position="2" isQueryField="true">OutcodeLC</Field>
+    <Field position="4" isQueryField="true">IncodeLC</Field>
+    <Field position="5" isQueryField="true" isCaseSensitive="true">LargeUserIncode</Field>
+    <Field position="6" isNormalizeField="true">County</Field>
+    <Field position="7" isQueryField="true">PostTown</Field>
+    <Field position="8" isNormalizeField="true">Locality</Field>
+    <Field position="9" isNormalizeField="true">SecondLocality</Field>
+    <Field position="10" isNormalizeField="true">StreetName</Field>
+    <Field position="11" isNormalizeField="true">StreetDescriptor</Field>
+    <Field position="12" isNormalizeField="true">SecondStreetName</Field>
+    <Field position="13" isNormalizeField="true">SecondStreetDescriptor</Field>
+    <Field position="14">DeliveryPointSuffix</Field>
+    <Field position="15">BuildingNumber</Field>
+    <Field position="16">BuildingName</Field>
+    <Field position="17">SubBuildingDesignator</Field>
+    <Field position="18">SubBuildingName</Field>
+    <Field position="19">OrganizationName</Field>
+    <Field position="20">DepartmentName</Field>
+    <Field position="21">PoBoxName</Field>
+    <Field position="22">ISOCode</Field>
+    <Field position="23" isQueryField="true">Country</Field>
+  </DelimitedAddressFile>
+  <DelimitedAddressFile fileName="UK.txt" fieldDelimiter="|" commentLinePrefix="//" charEncoding="Windows-1252">
+    <Field position="1" isQueryField="true">BFPO</Field>
+    <Field position="2" isQueryField="true" isCaseSensitive="true">Outcode</Field>
+    <Field position="3" isQueryField="true" isCaseSensitive="true">Sector</Field>
+    <Field position="4" isQueryField="true" isCaseSensitive="true">Incode</Field>
+    <Field position="2" isQueryField="true">OutcodeLC</Field>
+    <Field position="4" isQueryField="true">IncodeLC</Field>
+    <Field position="5" isQueryField="true" isCaseSensitive="true">LargeUserIncode</Field>
+    <Field position="6" isNormalizeField="true">County</Field>
+    <Field position="7" isQueryField="true">PostTown</Field>
+    <Field position="8" isNormalizeField="true">Locality</Field>
+    <Field position="9" isNormalizeField="true">SecondLocality</Field>
+    <Field position="10" isNormalizeField="true">StreetName</Field>
+    <Field position="11" isNormalizeField="true">StreetDescriptor</Field>
+    <Field position="12" isNormalizeField="true">SecondStreetName</Field>
+    <Field position="13" isNormalizeField="true">SecondStreetDescriptor</Field>
+    <Field position="14">DeliveryPointSuffix</Field>
+    <Field position="15">BuildingNumber</Field>
+    <Field position="16">BuildingName</Field>
+    <Field position="17">SubBuildingDesignator</Field>
+    <Field position="18">SubBuildingName</Field>
+    <Field position="19">OrganizationName</Field>
+    <Field position="20">DepartmentName</Field>
+    <Field position="21">PoBoxName</Field>
+    <Field position="1">ISOCode</Field>
+    <Field position="1" isQueryField="true">Country</Field>
+  </DelimitedAddressFile>
+  <DelimitedAddressFile fileName="Country.txt" fieldDelimiter="|" commentLinePrefix="//" charEncoding="Windows-1252">
+    <Field position="1" isQueryField="true">BFPO</Field>
+    <Field position="2" isQueryField="true" isCaseSensitive="true">Outcode</Field>
+    <Field position="3" isQueryField="true" isCaseSensitive="true">Sector</Field>
+    <Field position="4" isQueryField="true" isCaseSensitive="true">Incode</Field>
+    <Field position="2" isQueryField="true">OutcodeLC</Field>
+    <Field position="4" isQueryField="true">IncodeLC</Field>
+    <Field position="5" isQueryField="true" isCaseSensitive="true">LargeUserIncode</Field>
+    <Field position="6" isNormalizeField="true">County</Field>
+    <Field position="7" isQueryField="true">PostTown</Field>
+    <Field position="8" isNormalizeField="true">Locality</Field>
+    <Field position="9" isNormalizeField="true">SecondLocality</Field>
+    <Field position="10" isNormalizeField="true">StreetName</Field>
+    <Field position="11" isNormalizeField="true">StreetDescriptor</Field>
+    <Field position="12" isNormalizeField="true">SecondStreetName</Field>
+    <Field position="13" isNormalizeField="true">SecondStreetDescriptor</Field>
+    <Field position="14">DeliveryPointSuffix</Field>
+    <Field position="15">BuildingNumber</Field>
+    <Field position="16">BuildingName</Field>
+    <Field position="17">SubBuildingDesignator</Field>
+    <Field position="18">SubBuildingName</Field>
+    <Field position="19">OrganizationName</Field>
+    <Field position="20">DepartmentName</Field>
+    <Field position="21">PoBoxName</Field>
+    <Field position="22">ISOCode</Field>
+    <Field position="23" isQueryField="true">Country</Field>
+  </DelimitedAddressFile>
+  <DelimitedAliasFile fileName="County.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">County</Field>
+  </DelimitedAliasFile>
+  <DelimitedAliasFile fileName="PostTown.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">PostTown</Field>
+  </DelimitedAliasFile>
+  <DelimitedAliasFile fileName="StreetDescriptor.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">StreetDescriptor</Field>
+  </DelimitedAliasFile>
+  <DelimitedAliasFile fileName="StreetName.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">StreetName</Field>
+  </DelimitedAliasFile>
+  <DelimitedAliasFile fileName="PoBoxName.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">PoBoxName</Field>
+  </DelimitedAliasFile>
+  <DelimitedAliasFile fileName="SubBuildingDesignator.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">SubBuildingDesignator</Field>
+  </DelimitedAliasFile>
+  <DelimitedAliasFile fileName="OrganizationName.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">OrganizationName</Field>
+  </DelimitedAliasFile>
+    <DelimitedAliasFile fileName="Country_Alias.txt" tableDelimiter="=" commentLinePrefix="//">
+    <Field aliasListDelimiter=",">Country</Field>
+  </DelimitedAliasFile>
+</DirectoryDefinition>

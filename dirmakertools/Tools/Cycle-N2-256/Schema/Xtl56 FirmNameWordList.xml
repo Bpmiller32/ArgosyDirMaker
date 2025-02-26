@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XTLDB_TABLE_SCHEMA xmlns="http://www.raf.com/XTLDB" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.raf.com/XTLDB
+C:\Projects\XtlDB\Code\src\DataXtlDefs\XTLDB3~1.xsd">
+	<!--xtl # 56-->
+	<VarString1 name="FirmName"/>
+</XTLDB_TABLE_SCHEMA>

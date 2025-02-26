@@ -141,7 +141,8 @@ public class RoyalMailBuilder : BaseModule
 
         using UIA2Automation automation = new();
         FlaUI.Core.Application app = FlaUI.Core.Application.Launch(Path.Combine(dataSourcePath, "SetupRM.exe"));
-        // Annoyingly have to do this because SetupRM is not created correctly, "splash screen" effect causes FlaUI to grab the window before the body is populated with elements
+        // Annoyingly have to do this wait because SetupRM is not created correctly, "splash screen" effect causes FlaUI to grab the window before the body is populated with elements
+        // Could make better with waiting for Windows control visibility or something, this is good enough though
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
         Window[] windows = app.GetAllTopLevelWindows(automation);
 
@@ -169,7 +170,8 @@ public class RoyalMailBuilder : BaseModule
         AutomationElement startButton = windows[0].FindFirstDescendant(cf => cf.ByClassName("TButton"));
         windows[0].SetForeground();
         startButton.AsButton().Click();
-        // Annoying have to wait because SetupRM hangs before moving to extract causing the WaitForExtract to miss the TProgressBar element is needs to watch
+
+        // Annoyingly have to wait because SetupRM hangs before moving to extract causing the WaitForExtract to miss the TProgressBar element is needs to watch
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
 
         await WaitForExtract(windows, stoppingToken);

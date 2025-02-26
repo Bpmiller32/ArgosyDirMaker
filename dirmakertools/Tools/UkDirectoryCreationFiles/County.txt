@@ -1,0 +1,43 @@
+// Source: http://en.wikipedia.org/wiki/Postal_counties_of_the_United_Kingdom
+// England
+Bedfordshire=Beds
+Berkshire=Berks
+Buckinghamshire=Bucks
+Cambridgeshire=Cambs
+County Durham=Durham,Co Durham
+East Sussex=E Sussex
+Gloucestershire=Glos
+Hampshire=Hants
+Hertfordshire=Herts
+Lancashire=Lancs
+Leicestershire=Leics
+Lincolnshire=South Lincolnshire,Lincs
+Middlesex=Middx
+North Humberside=N Humbs
+North Yorkshire=N Yorks
+Northamptonshire=Northants
+Northumberland=Northd
+Nottinghamshire=Notts
+Oxfordshire=Oxon
+Shropshire=Salop
+South Humberside=S Humbs
+South Yorkshire=S Yorks
+Staffordshire=Staffs
+Tyne and Wear=Tyne & Wear,Tyne Wear
+Warwickshire=Warks
+West Midlands=W Mids
+West Sussex=W Sussex
+West Yorkshire=W Yorks
+Wiltshire=Wilts
+Worcestershire=Worcs
+// Wales
+Mid Glamorgan=M Glam
+South Glamorgan=S Glam
+West Glamorgan=W Glam
+// Northern Ireland
+County Antrim=Co Antrim,Antrim
+County Armagh=Co Armagh,Armagh
+County Down=Co Down,Down
+County Fermanagh=Co Fermanagh,Fermanagh
+County Londonderry=Co Londonderry,Londonderry
+County Tyrone=Co Tyrone,Tyrone

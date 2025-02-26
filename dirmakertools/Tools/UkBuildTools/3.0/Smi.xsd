@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://www.raf.com/Smi" xmlns:Smi="http://www.raf.com/Smi" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:annotation>
+    <xs:documentation>
+      Schema for Smart Match-i (SM-i) configuration
+      Copyright (C) RAF Software Technology, Inc.
+    </xs:documentation>
+  </xs:annotation>
+
+  <!-- Global settings -->
+  <xs:element name="SmiGlobalSettings">
+    <xs:complexType>
+      <xs:choice maxOccurs="unbounded">
+        <xs:element name="EventLog">
+          <xs:complexType>
+            <xs:attribute name="logLevel" type="Smi:LogLevel" default="Info" />
+            <xs:attribute name="maxSizeMb" type="Smi:PositiveInt8" default="1" />
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Directory settings -->
+  <xs:element name="SmiSettings">
+    <xs:complexType>
+      <xs:choice maxOccurs="unbounded">
+        <xs:element name="DirectoryDataFile">
+          <xs:complexType>
+            <xs:simpleContent>
+              <xs:extension base="Smi:FileName">
+                <xs:attribute name="prefetchFile" type="xs:boolean" default="true" />
+                <xs:attribute name="loadCache" type="xs:boolean" default="true" />
+                <xs:attribute name="initialCacheSize" type="xs:unsignedShort" default="128" />
+              </xs:extension>
+            </xs:simpleContent>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="PatternsFile" type="Smi:FileName" />
+        <xs:element name="CharacterMatchTable" type="Smi:FileName" />
+        <xs:element name="WordMatchTable" type="Smi:FileName" />
+        <xs:element name="IgnorableWordsTable" type="Smi:FileName" />
+        <xs:element name="PostProcessor">
+          <xs:complexType>
+            <xs:simpleContent>
+              <xs:extension base="Smi:FileName">
+                <xs:attribute name="configurationFile" type="Smi:FileName" />
+              </xs:extension>
+            </xs:simpleContent>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="UserData">
+        </xs:element>
+      </xs:choice>
+      <xs:attribute name="product" type="Smi:NonEmptyString" />
+      <xs:attribute name="name" type="Smi:NonEmptyString" use="required" />
+      <xs:attribute name="version" type="Smi:NonEmptyString" use="required" />
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Directory data definition -->
+  <xs:element name="DirectoryDefinition">
+    <xs:complexType>
+      <xs:choice maxOccurs="unbounded">
+        <!-- Delimited customer address data file -->
+        <xs:element name="DelimitedAddressFile">
+          <xs:complexType>
+            <xs:choice maxOccurs="unbounded">
+              <xs:element name="Field">
+                <xs:complexType>
+                  <xs:simpleContent>
+                    <xs:extension base="Smi:FieldName">
+                      <xs:attribute name="position" type="xs:positiveInteger" use="required" />
+                      <xs:attribute name="isQueryField" type="xs:boolean" default="false" />
+                      <xs:attribute name="isNormalizeField" type="xs:boolean" default="false" />
+                      <xs:attribute name="isOutputOnlyField" type="xs:boolean" default="false" />
+                      <xs:attribute name="isCaseSensitive" type="xs:boolean" default="false" />
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="RangedField">
+                <xs:complexType>
+                  <xs:simpleContent>
+                    <xs:extension base="Smi:FieldName">
+                      <!-- For ranged fields with range delimiter -->
+                      <xs:attribute name="position" type="xs:positiveInteger" />
+                      <xs:attribute name="rangeDelimiter" type="Smi:Delimiter" />
+                      <!-- For ranged fields without range delimiter -->
+                      <xs:attribute name="positionLwrBound" type="xs:positiveInteger" />
+                      <xs:attribute name="positionUprBound" type="xs:positiveInteger" />
+                      <!-- For all ranged fields -->
+                      <xs:attribute name="rangeTypePosition" type="xs:positiveInteger" />
+                      <xs:attribute name="rangeTypeCharEven" type="Smi:Delimiter" default="E" />
+                      <xs:attribute name="rangeTypeCharOdd" type="Smi:Delimiter" default="O" />
+                      <xs:attribute name="rangeTypeCharBoth" type="Smi:Delimiter" default="B" />
+                      <xs:attribute name="allowLeadingAlphaNoise" type="xs:boolean" default="false" />
+                      <xs:attribute name="allowMissingTrailingAlpha" type="xs:boolean" default="true" />
+                      <xs:attribute name="allowTrailingAlphaNoise" type="xs:boolean" default="true" />
+                      <xs:attribute name="allowTrailingDashNoise" type="xs:boolean" default="true" />
+                      <xs:attribute name="allowTrailingSlashNoise" type="xs:boolean" default="true" />
+                      <xs:attribute name="allowTransposedAlpha" type="xs:boolean" default="true" />
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:choice>
+            <xs:attribute name="fileName" type="Smi:FileName" use="required" />
+            <xs:attribute name="fieldDelimiter" type="Smi:Delimiter" use="required" />
+            <xs:attribute name="commentLinePrefix" type="xs:string" />
+            <xs:attribute name="nullKeyword" type="Smi:NonEmptyString" />
+            <xs:attribute name="charEncoding" type="Smi:CharEncoding" default="Autodetect" />
+          </xs:complexType>
+        </xs:element>
+        <!-- Fixed-width customer address data file -->
+        <xs:element name="FixedWidthAddressFile">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:choice maxOccurs="unbounded">
+                <xs:element name="Field">
+                  <xs:complexType>
+                    <xs:simpleContent>
+                      <xs:extension base="Smi:FieldName">
+                        <xs:attribute name="beginCol" type="xs:positiveInteger" use="required" />
+                        <xs:attribute name="endCol" type="xs:positiveInteger" use="required" />
+                        <xs:attribute name="isQueryField" type="xs:boolean" default="false" />
+                        <xs:attribute name="isNormalizeField" type="xs:boolean" default="false" />
+                        <xs:attribute name="isOutputOnlyField" type="xs:boolean" default="false" />
+                        <xs:attribute name="isCaseSensitive" type="xs:boolean" default="false" />
+                      </xs:extension>
+                    </xs:simpleContent>
+                  </xs:complexType>
+                </xs:element>
+                <xs:element name="RangedField">
+                  <xs:complexType>
+                    <xs:simpleContent>
+                      <xs:extension base="Smi:FieldName">
+                        <!-- For ranged fields with range delimiter -->
+                        <xs:attribute name="beginCol" type="xs:positiveInteger" />
+                        <xs:attribute name="endCol" type="xs:positiveInteger" />
+                        <xs:attribute name="rangeDelimiter" type="Smi:Delimiter" />
+                        <!-- For ranged fields without range delimiter -->
+                        <xs:attribute name="beginColLwrBound" type="xs:positiveInteger" />
+                        <xs:attribute name="endColLwrBound" type="xs:positiveInteger" />
+                        <xs:attribute name="beginColUprBound" type="xs:positiveInteger" />
+                        <xs:attribute name="endColUprBound" type="xs:positiveInteger" />
+                        <!-- For all ranged fields -->
+                        <xs:attribute name="rangeTypeCol" type="xs:positiveInteger" />
+                        <xs:attribute name="rangeTypeCharEven" type="Smi:Delimiter" default="E" />
+                        <xs:attribute name="rangeTypeCharOdd" type="Smi:Delimiter" default="O" />
+                        <xs:attribute name="rangeTypeCharBoth" type="Smi:Delimiter" default="B" />
+                        <xs:attribute name="allowLeadingAlphaNoise" type="xs:boolean" default="false" />
+                        <xs:attribute name="allowMissingTrailingAlpha" type="xs:boolean" default="true" />
+                        <xs:attribute name="allowTrailingAlphaNoise" type="xs:boolean" default="true" />
+                        <xs:attribute name="allowTrailingDashNoise" type="xs:boolean" default="true" />
+                        <xs:attribute name="allowTrailingSlashNoise" type="xs:boolean" default="true" />
+                        <xs:attribute name="allowTransposedAlpha" type="xs:boolean" default="true" />
+                      </xs:extension>
+                    </xs:simpleContent>
+                  </xs:complexType>
+                </xs:element>
+              </xs:choice>
+            </xs:sequence>
+            <xs:attribute name="fileName" type="Smi:FileName" use="required" />
+            <xs:attribute name="commentLinePrefix" type="xs:string" />
+            <xs:attribute name="nullKeyword" type="Smi:NonEmptyString" />
+            <xs:attribute name="charEncoding" type="Smi:CharEncoding" default="Autodetect" />
+          </xs:complexType>
+        </xs:element>
+        <!-- Delimited alias definition file -->
+        <xs:element name="DelimitedAliasFile">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Field">
+                <xs:complexType>
+                  <xs:simpleContent>
+                    <xs:extension base="Smi:FieldName">
+                      <xs:attribute name="aliasListDelimiter" type="Smi:Delimiter" />
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="fileName" type="Smi:FileName" use="required" />
+            <xs:attribute name="tableDelimiter" type="Smi:Delimiter" use="required" />
+            <xs:attribute name="commentLinePrefix" type="xs:string" />
+            <xs:attribute name="charEncoding" type="Smi:CharEncoding" default="Autodetect" />
+          </xs:complexType>
+        </xs:element>
+        <!-- Fixed width alias definition file -->
+        <xs:element name="FixedWidthAliasFile">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Field">
+                <xs:complexType>
+                  <xs:simpleContent>
+                    <xs:extension base="Smi:FieldName">
+                      <xs:attribute name="aliasListDelimiter" type="Smi:Delimiter" />
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="fileName" type="Smi:FileName" use="required" />
+            <xs:attribute name="canonicalBeginCol" type="xs:unsignedShort" use="required" />
+            <xs:attribute name="canonicalEndCol" type="xs:unsignedShort" use="required" />
+            <xs:attribute name="aliasBeginCol" type="xs:unsignedShort" use="required" />
+            <xs:attribute name="aliasEndCol" type="xs:unsignedShort" use="required" />
+            <xs:attribute name="commentLinePrefix" type="xs:string" />
+            <xs:attribute name="charEncoding" type="Smi:CharEncoding" default="Autodetect" />
+          </xs:complexType>
+        </xs:element>
+        <!-- Word list file -->
+        <xs:element name="WordListFile">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Field">
+                <xs:complexType>
+                  <xs:simpleContent>
+                    <xs:extension base="Smi:FieldName">
+                    </xs:extension>
+                  </xs:simpleContent>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="fileName" type="Smi:FileName" use="required" />
+            <xs:attribute name="commentLinePrefix" type="xs:string" />
+            <xs:attribute name="charEncoding" type="Smi:CharEncoding" default="Autodetect" />
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+      <xs:attribute name="name" type="Smi:NonEmptyString" use="required" />
+      <xs:attribute name="version" type="Smi:NonEmptyString" use="required" />
+      <xs:attribute name="expirationDate" type="xs:date" use="optional" />
+    </xs:complexType>
+  </xs:element>
+  
+  <!-- Address pattern configuration -->
+  <xs:element name="AddressPatterns">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Pattern" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="AddressBlock">
+                <xs:complexType>
+                  <xs:choice maxOccurs="unbounded">
+                    <xs:element name="Line">
+                      <xs:complexType>
+                        <xs:choice maxOccurs="unbounded">
+                          <xs:element name="Component">
+                            <xs:complexType>
+                              <xs:simpleContent>
+                                <xs:extension base="Smi:FieldName">
+                                  <xs:attribute name="searchOrder" type="Smi:PositiveInt8" use="required" />
+                                  <xs:attribute name="isOptional" type="xs:boolean" default="false" />
+                                  <xs:attribute name="readRightToLeft" type="xs:boolean" default="false" />
+                                  <xs:attribute name="requireExactMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMissingLeadingZero" type="xs:boolean" default="true" />
+                                  <xs:attribute name="minFuzzyMatchLevel" type="Smi:FuzzyMatchLevel" default="Default" />
+                                  <!-- String fuzzy matching related options -->
+                                  <!-- Not applicable for ranged fields or fields with requireExactMatch set to true -->
+                                  <xs:attribute name="allowGermanStyleStreetTypeMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowSwedishStyleStreetTypeMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowCroatianStreetMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowContractionMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowTransposedWordMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowAbbreviationMatch" type="xs:boolean" default="true" />
+                                  <xs:attribute name="allowLeadingAttachedNoiseMatch" type="xs:boolean" default="true" />
+                                  <xs:attribute name="allowTrailingAttachedNoiseMatch" type="xs:boolean" default="true" />
+                                  <xs:attribute name="allowMissingNumericOrdinal" type="xs:boolean" default="true" />
+                                  <xs:attribute name="allowTruncation" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMissingFirstWord" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMissingMiddleWord" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMissingNonNumericLastWord" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMissingNumericLastWord" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowRomanNumberMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMatchLastWordFirst" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowMatchFirstWordLast" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowAcronymMatch" type="xs:boolean" default="true" />
+                                  <xs:attribute name="allowSubStringWordMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowAustraliaHouseNumUnitMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowBelgianStreetMatch" type="xs:boolean" default="false" />
+                                  <xs:attribute name="allowCountryPostcodePrefixMatch" type="xs:boolean" default="false" />
+                                </xs:extension>
+                              </xs:simpleContent>
+                            </xs:complexType>
+                          </xs:element>
+                          <xs:element name="NoiseChars">
+                            <xs:complexType>
+                              <xs:simpleContent>
+                                <xs:extension base="Smi:NoiseName">
+                                  <xs:attribute name="minQuantity" type="Smi:PositiveInt8" />
+                                  <xs:attribute name="maxQuantity" type="Smi:PositiveInt8" default="255" />
+                                </xs:extension>
+                              </xs:simpleContent>
+                            </xs:complexType>
+                          </xs:element>
+                        </xs:choice>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="NoiseLines">
+                      <xs:complexType>
+                        <xs:simpleContent>
+                          <xs:extension base="Smi:NoiseName">
+                            <xs:attribute name="minQuantity" type="Smi:PositiveInt8" />
+                            <xs:attribute name="maxQuantity" type="xs:unsignedByte" default="255" />
+                          </xs:extension>
+                        </xs:simpleContent>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:choice>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="AddressFilter" minOccurs="0">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Field" minOccurs="1" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:simpleContent>
+                          <xs:extension base="Smi:FieldName">
+                            <xs:attribute name="value" type="xs:string" use="required" />
+                          </xs:extension>
+                        </xs:simpleContent>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="Output">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="TransportField" minOccurs="0" maxOccurs="1">
+                      <xs:complexType>
+                        <xs:simpleContent>
+                          <xs:extension base="Smi:FieldName">
+                            <xs:attribute name="value" type="xs:string" />
+                          </xs:extension>
+                        </xs:simpleContent>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="Field" minOccurs="0" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:simpleContent>
+                          <xs:extension base="Smi:FieldName">
+                            <xs:attribute name="value" type="xs:string" />
+                          </xs:extension>
+                        </xs:simpleContent>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+            <xs:attribute name="name" type="Smi:NonEmptyString" use="required" />
+            <xs:attribute name="type" type="Smi:NonEmptyString" />
+            <xs:attribute name="levelOfSort" type="Smi:PositiveInt8" use="required" />
+            <xs:attribute name="isFinal" type="xs:boolean" default="false" />
+            <xs:attribute name="maxNumRecords" type="xs:unsignedInt" default="4294967295"/>
+            <xs:attribute name="direction" type="Smi:PatternDirection" default="BottomToTop"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="name" type="Smi:NonEmptyString" use="required" />
+      <xs:attribute name="version" type="Smi:NonEmptyString" use="required" />
+      <xs:attribute name="allowMultipleResponseDefault" type="xs:boolean" default="false" />
+      <xs:attribute name="removeWordsInParentheses" type="xs:boolean" default="true" />
+    </xs:complexType>
+  </xs:element>
+
+  <!-- Custom types -->
+  <xs:simpleType name="PositiveInt8">
+    <xs:restriction base="xs:positiveInteger">
+      <xs:minInclusive value="1" />
+      <xs:maxInclusive value="255" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FieldName">
+    <xs:restriction base="xs:token">
+      <xs:whiteSpace value="collapse" />
+      <xs:pattern value="[A-Za-z0-9_]*" />
+      <xs:minLength value="1" />
+      <xs:maxLength value="32" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="NoiseName">
+    <xs:restriction base="xs:token">
+      <xs:whiteSpace value="collapse" />
+      <xs:pattern value="[A-Za-z0-9_.+-]*" />
+      <xs:minLength value="0" />
+      <xs:maxLength value="32" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FileName">
+    <xs:restriction base="xs:token">
+      <xs:whiteSpace value="collapse" />
+      <xs:minLength value="1" />
+      <xs:pattern value="[^*?'|&quot;]*" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="NonEmptyString">
+    <xs:restriction base="xs:token">
+      <xs:whiteSpace value="collapse" />
+      <xs:minLength value="1" />
+      <xs:pattern value="[^*?'|]*" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="CharEncoding">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Autodetect" />
+      <!-- Windows-1252 is essentially the same as ISO-8859-1 and is the default for en-us and many other locales -->
+      <xs:enumeration value="Windows-1252" />
+      <xs:enumeration value="UTF-8" />
+      <!-- LE = little-endian (e.g. x86) -->
+      <xs:enumeration value="UTF-16LE" />
+      <!-- BE = big-endian -->
+      <xs:enumeration value="UTF-16BE" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Delimiter">
+    <xs:restriction base="xs:string">
+      <xs:length value="1" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="LogLevel">
+    <xs:restriction base="xs:string">
+      <!-- Log level values are listed in order from most verbose (Detail) to least verbose (Error) -->
+      <xs:enumeration value="Detail" />
+      <xs:enumeration value="Info" />
+      <xs:enumeration value="Warning" />
+      <xs:enumeration value="Error" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="PatternDirection">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="BottomToTop" />
+      <xs:enumeration value="TopToBottom" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FuzzyMatchLevel">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="VeryHigh" />
+      <xs:enumeration value="High" />
+      <xs:enumeration value="Default" />
+      <xs:enumeration value="Low" />
+      <xs:enumeration value="VeryLow" />
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

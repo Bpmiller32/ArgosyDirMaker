@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XTLDB_TABLE_SCHEMA xmlns="http://www.raf.com/XTLDB" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.raf.com/XTLDB
+C:\Projects\XtlDB\Code\src\DataXtlDefs\XTLDB3~1.xsd">
+	<!--xtl # 201-->
+	<FixedInt name="ZipCode" bitSize="17"/>
+  <FixedInt name="CityStateKey" bitSize="12"/>
+	<FixedInt name="IsUnique" bitSize="1"/><!--bool-->
+	<VarString1 name="CityName"/>
+	<VarString1 name="CityNameAbbreviation"/>
+	<FixedInt name="MailingNameIndicator" bitSize="1"/><!--bool-->
+  <FixedInt name="PreferredLastLineCityStateKey" bitSize="12"/>
+	<VarString1 name="PreferredLastLineCityName"/>
+	<FixedInt name="FinanceNumber" bitSize="15"/>
+	<FixedInt name="State" bitSize="6"/><!--enumeration-->
+	<FixedInt name="IsUrbanization" bitSize="1"/><!--bool-->
+</XTLDB_TABLE_SCHEMA>

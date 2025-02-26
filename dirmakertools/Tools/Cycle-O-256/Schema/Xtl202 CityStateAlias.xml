@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XTLDB_TABLE_SCHEMA xmlns="http://www.raf.com/XTLDB" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.raf.com/XTLDB
+C:\Projects\XtlDB\Code\src\DataXtlDefs\XTLDB3~1.xsd">
+	<!--xtl # 202-->
+	<VarString1 name="AliasStreetName"/>
+	<FixedInt name="AliasPrePost" bitSize="7"/>
+	<!--enumeration-->
+	<FixedInt name="AliasSuffix" bitSize="8"/>
+	<!--enumeration-->
+	<VarString1 name="CanonStreetName"/>
+	<FixedInt name="CanonPrePost" bitSize="7"/>
+	<!--enumeration-->
+	<FixedInt name="CanonSuffix" bitSize="8"/>
+	<!--enumeration-->
+	<VarString1 name="PrimaryAddrLow"/>
+	<VarString1 name="PrimaryAddrHigh"/>
+	<FixedInt name="PrimaryOddEvenCode" bitSize="2"/>
+	<!--enumeration-->
+	<FixedInt name="AliasTypeCode" bitSize="2"/>
+	<!--enumeration-->
+</XTLDB_TABLE_SCHEMA>

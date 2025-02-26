@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XTLDB_TABLE_SCHEMA xmlns="http://www.raf.com/XTLDB" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.raf.com/XTLDB
+C:\Projects\XtlDB\Code\src\DataXtlDefs\XTLDB3~1.xsd">
+	<!--xtl # 210-->
+	<FixedInt name="ZipIndex" bitSize="30"/>
+	<XtlPtr name="StreetListPtr" bitSize="1" xtlId="51"/>
+	<FixedInt name="Suffix" bitSize="8"/><!--enumeration-->
+	<FixedInt name="PrePostDir" bitSize="7"/><!--enumeration-->
+	<Vector name="PtrVec">
+		<Size>
+			<VarInt name="" chunkBitSize="2" maxBitSize="11"/>
+		</Size>
+		<XtlPtr name="Zip4DetailPtr" bitSize="1" xtlId="200"/>
+	</Vector>
+</XTLDB_TABLE_SCHEMA>

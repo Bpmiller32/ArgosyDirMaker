@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XTLDB_TABLE_SCHEMA xmlns="http://www.raf.com/XTLDB" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.raf.com/XTLDB
+C:\Projects\XtlDB\Code\src\DataXtlDefs\XTLDB3~1.xsd">
+	<!--xtl # 200-->
+  <FixedInt name="RecordTypeCode" bitSize="3"/><!--enumeration-->
+  <FixedInt name="PrimaryOddEvenCode" bitSize="2"/><!--enumeration-->
+  <FixedInt name="Zip4AddOnLow" bitSize="14"/>
+  <FixedInt name="BaseOrAlternate" bitSize="1"/>
+  <FixedInt name="LacsStatus" bitSize="1"/>
+  <FixedInt name="PLLCityStateKey" bitSize="12"/>
+  <Union name="PrimaryRange">
+    <Group name="string">
+      <VarString2 name="low"/>
+      <VarString2 name="high"/>
+    </Group>
+    <Group name="number">
+      <VarInt name="low" chunkBitSize="15" maxBitSize="31"/>
+      <VarInt name="high" chunkBitSize="7" maxBitSize="28"/>
+    </Group>
+  </Union>
+  <Optional name="BldgOrFirmName">
+    <XtlPtr name="FirmNamePtr" bitSize="1" xtlId="56"/>
+  </Optional>
+  <Optional name="SecondaryAddr">
+    <FixedInt name="SecondaryType" bitSize="5"/>
+    <!--enumeration-->
+    <Union name="SecondaryRange">
+      <Group name="string">
+        <VarString2 name="low"/>
+        <VarString2 name="high"/>
+      </Group>
+      <Group name="number">
+        <VarInt name="low" chunkBitSize="12" maxBitSize="27"/>
+        <VarInt name="high" chunkBitSize="7" maxBitSize="21"/>
+      </Group>
+    </Union>
+    <FixedInt name="SecondaryOddEvenCode" bitSize="2"/>
+    <!--enumeration-->
+  </Optional>
+  <Optional name="Zip4AddOnHigh"><!--if not present, then assume same as Zip4AddOnLow-->
+    <FixedInt name="addon" bitSize="14"/>
+  </Optional>
+  <Optional name="Urbanization">
+    <FixedInt name="key" bitSize="12"/>
+  </Optional>
+  <XtlPtr name="CarrierRoutePtr" bitSize="1" xtlId="55"/>
+</XTLDB_TABLE_SCHEMA>

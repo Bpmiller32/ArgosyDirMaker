@@ -1,0 +1,2 @@
+// BFPO|Outcode|Sector|Incode|LargeUserIncode|County|PostTown|Locality|SecondLocality|StreetName|StreetDescriptor|SecondStreetName|SecondStreetDescriptor|DeliveryPointSuffix|BuildingNumber|BuildingName|SubBuildingDesignator|SubBuildingName|OrganizationName|DepartmentName|PoBoxName||
+BFPO||||||||||||||||||||||

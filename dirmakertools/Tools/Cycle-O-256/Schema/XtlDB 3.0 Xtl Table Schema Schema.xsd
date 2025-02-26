@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:XTLDB="http://www.raf.com/XTLDB" xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.raf.com/XTLDB" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:element name="XTLDB_TABLE_SCHEMA">
+		<xs:complexType>
+			<xs:group ref="XTLDB:FieldGroup" maxOccurs="unbounded"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:group name="FieldGroup">
+		<xs:choice>
+			<xs:group ref="XTLDB:SimpleFieldGroup"/>
+			<xs:group ref="XTLDB:ComplexFieldGroup"/>
+		</xs:choice>
+	</xs:group>
+	<xs:group name="SimpleFieldGroup">
+		<xs:choice>
+			<xs:element ref="XTLDB:VarString1"/>
+			<xs:element ref="XTLDB:VarString2"/>
+			<xs:element ref="XTLDB:FixedString1"/>
+			<xs:element ref="XTLDB:VarInt"/>
+			<xs:element ref="XTLDB:FixedInt"/>
+			<xs:element ref="XTLDB:XtlPtr"/>
+		</xs:choice>
+	</xs:group>
+	<xs:group name="ComplexFieldGroup">
+		<xs:choice>
+			<xs:element ref="XTLDB:Vector"/>
+			<xs:element ref="XTLDB:Optional"/>
+			<xs:element ref="XTLDB:Union"/>
+		</xs:choice>
+	</xs:group>
+	<xs:element name="VarString1">
+		<xs:annotation>
+			<xs:documentation>6-bit character representation, null terminated.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="VarString2">
+		<xs:annotation>
+			<xs:documentation>Huffman encoded string, null terminated.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="FixedString1">
+		<xs:annotation>
+			<xs:documentation>6-bit character representation, no terminator.  Can be padded with nulls if desired.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+			<xs:attribute name="length" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:minInclusive value="1"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="VarInt">
+		<xs:annotation>
+			<xs:documentation>Variable bit length integer, stored in fixed sized chunks with chain bits.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+			<xs:attribute name="chunkBitSize" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:maxInclusive value="62"/>
+						<xs:minInclusive value="1"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute name="maxBitSize" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:maxInclusive value="64"/>
+						<xs:minInclusive value="1"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="FixedInt">
+		<xs:annotation>
+			<xs:documentation>Fixed bit length integer.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+			<xs:attribute name="bitSize" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:minInclusive value="1"/>
+						<xs:maxInclusive value="64"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="XtlPtr">
+		<xs:annotation>
+			<xs:documentation>Specifies an offset into another xtl.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+			<xs:attribute name="bitSize" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:minInclusive value="1"/>
+						<xs:maxInclusive value="64"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute name="xtlId" use="required">
+				<xs:simpleType>
+					<xs:restriction base="xs:positiveInteger">
+						<xs:minInclusive value="1"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="Vector">
+		<xs:annotation>
+			<xs:documentation>A set of fields that repeats a variable number of times.</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="Size">
+					<xs:annotation>
+						<xs:documentation>Number of times the set of fields repeats.  May be 0.</xs:documentation>
+					</xs:annotation>
+					<xs:complexType>
+						<xs:choice>
+							<xs:element ref="XTLDB:FixedInt"/>
+							<xs:element ref="XTLDB:VarInt"/>
+						</xs:choice>
+					</xs:complexType>
+				</xs:element>
+				<xs:group ref="XTLDB:FieldGroup" maxOccurs="unbounded"/>
+			</xs:sequence>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="Union">
+		<xs:complexType>
+			<xs:sequence minOccurs="2" maxOccurs="4">
+				<xs:element name="Group">
+					<xs:complexType>
+						<xs:group ref="XTLDB:FieldGroup" maxOccurs="unbounded"/>
+						<xs:attribute name="name" type="xs:string" use="required"/>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="Optional">
+		<xs:complexType>
+			<xs:group ref="XTLDB:FieldGroup" maxOccurs="unbounded"/>
+			<xs:attribute name="name" type="xs:string" use="required"/>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>
