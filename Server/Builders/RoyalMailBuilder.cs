@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using FlaUI.UIA2;
 using FlaUI.Core.AutomationElements;
-using DataObjects;
+using Server.DataObjects;
 using System.Xml;
 using System.Diagnostics;
 
@@ -361,9 +361,7 @@ public class RoyalMailBuilder : BaseModule
 
         RoyalBundle bundle = context.RoyalBundles.Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
         bundle.IsBuildComplete = true;
-        bundle.IsBuildComplete = true;
-        bundle.CompileDate = Utils.CalculateDbDate();
-        bundle.CompileTime = Utils.CalculateDbTime();
+        bundle.CompileTimestamp = DateTime.Now;
 
         await context.SaveChangesAsync(stoppingToken);
         SendDbUpdate = true;

@@ -1,4 +1,4 @@
-﻿﻿using DataObjects;
+﻿﻿using Server.DataObjects;
 
 namespace Server.ServerMessages;
 

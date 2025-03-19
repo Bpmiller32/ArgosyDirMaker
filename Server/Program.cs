@@ -6,7 +6,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Templates;
 using Server.Builders;
-using DataObjects;
+using Server.DataObjects;
 using Server.Crawlers;
 using Server.ServerMessages;
 using Server.Tester;
@@ -213,8 +213,7 @@ app.MapPost($"{reverseProxySubdomain}/smartmatch/builder", (SmartMatchBuilder bu
             {
                 message.ExpireDays = "105";
             }
-            Task.Run(() => builder.Start(message.Cycle, message.DataYearMonth,
-                cancelTokens[SMARTMATCH_BUILDER], message.ExpireDays));
+            Task.Run(() => builder.Start(message.Cycle, message.DataYearMonth, cancelTokens[SMARTMATCH_BUILDER], message.ExpireDays));
             return Results.Ok();
 
         case ModuleCommandType.Stop:
@@ -254,8 +253,7 @@ app.MapPost($"{reverseProxySubdomain}/royalmail/builder", (RoyalMailBuilder buil
         case ModuleCommandType.Start:
             cancelTokens[ROYALMAIL_BUILDER] = new();
             Utils.KillRmProcs();
-            Task.Run(() => builder.Start(message.DataYearMonth, message.RoyalMailKey,
-                cancelTokens[ROYALMAIL_BUILDER].Token));
+            Task.Run(() => builder.Start(message.DataYearMonth, message.RoyalMailKey, cancelTokens[ROYALMAIL_BUILDER].Token));
             return Results.Ok();
 
         case ModuleCommandType.Stop:

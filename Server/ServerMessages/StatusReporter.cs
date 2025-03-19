@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Server.Builders;
-using DataObjects;
+using Server.DataObjects;
 using Server.Crawlers;
 using Server.Tester;
 using Microsoft.EntityFrameworkCore;
@@ -164,8 +164,18 @@ public class StatusReporter
     {
         reporter.DataYearMonth += $"{bundle.DataYearMonth}|";
         reporter.FileCount += $"{bundle.FileCount}|";
-        reporter.DownloadDate += $"{bundle.DownloadDate}|";
-        reporter.DownloadTime += $"{bundle.DownloadTime}|";
+        
+        // Format the DownloadTimestamp into date and time strings
+        if (bundle.DownloadTimestamp.HasValue)
+        {
+            reporter.DownloadDate += $"{bundle.DownloadTimestamp.Value.ToShortDateString()}|";
+            reporter.DownloadTime += $"{bundle.DownloadTimestamp.Value.ToShortTimeString()}|";
+        }
+        else
+        {
+            reporter.DownloadDate += "|";
+            reporter.DownloadTime += "|";
+        }
     }
 
     // Trims trailing pipe characters from crawler values if data exists

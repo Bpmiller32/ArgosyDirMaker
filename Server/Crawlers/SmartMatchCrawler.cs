@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PuppeteerSharp;
-using DataObjects;
+using Server.DataObjects;
 
 namespace Server.Crawlers;
 
@@ -320,13 +320,9 @@ public class SmartMatchCrawler : BaseModule
 
             bundle.IsReadyForBuild = true;
             bundle.FileCount = bundle.BuildFiles.Count;
-            if (string.IsNullOrEmpty(bundle.DownloadDate))
+            if (!bundle.DownloadTimestamp.HasValue)
             {
-                bundle.DownloadDate = Utils.CalculateDbDate();
-            }
-            if (string.IsNullOrEmpty(bundle.DownloadTime))
-            {
-                bundle.DownloadTime = Utils.CalculateDbTime();
+                bundle.DownloadTimestamp = DateTime.Now;
             }
 
             logger.LogInformation($"Bundle ready to build: {bundle.DataMonth}/{bundle.DataYear} {bundle.Cycle}");

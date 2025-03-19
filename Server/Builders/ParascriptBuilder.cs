@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
-using DataObjects;
+using Server.DataObjects;
 
 namespace Server.Builders;
 
@@ -223,8 +223,7 @@ public class ParascriptBuilder : BaseModule
         // Will be null if Crawler never made a record for it, watch out if running standalone
         ParaBundle bundle = context.ParaBundles.Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
         bundle.IsBuildComplete = true;
-        bundle.CompileDate = Utils.CalculateDbDate();
-        bundle.CompileTime = Utils.CalculateDbTime();
+        bundle.CompileTimestamp = DateTime.Now;
 
         await context.SaveChangesAsync(stoppingToken);
         SendDbUpdate = true;

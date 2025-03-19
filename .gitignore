@@ -33,3 +33,4 @@ Server/.DS_Store
 TestServer/.DS_Store
 /DataObjects/bin
 /Server/bin
+.DS_Store

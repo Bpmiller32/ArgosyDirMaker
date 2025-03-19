@@ -1,6 +1,6 @@
 using Com.Raf.Utility;
 using Com.Raf.Xtl.Build;
-using DataObjects;
+using Server.DataObjects;
 
 namespace Server.Builders;
 
@@ -207,8 +207,7 @@ public class SmartMatchBuilder : BaseModule
         // Will be null if Crawler never made a record for it, watch out if running standalone
         UspsBundle bundle = context.UspsBundles.Where(x => dataYearMonth == x.DataYearMonth && $"Cycle-{cycle}" == x.Cycle).FirstOrDefault();
         bundle.IsBuildComplete = true;
-        bundle.CompileDate = Utils.CalculateDbDate();
-        bundle.CompileTime = Utils.CalculateDbTime();
+        bundle.CompileTimestamp = DateTime.Now;
 
         await context.SaveChangesAsync(stoppingToken);
         SendDbUpdate = true;
