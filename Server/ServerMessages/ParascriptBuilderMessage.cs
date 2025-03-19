@@ -1,7 +1,11 @@
-﻿namespace Server.ServerMessages;
+﻿﻿namespace Server.ServerMessages;
 
-public class ParascriptBuilderMessage
+// Message for controlling Parascript builder module
+public class ParascriptBuilderMessage : IBuilderMessage
 {
-    public string ModuleCommand { get; set; }
+    // Command to be executed by the Parascript builder module (Start/Stop)
+    public ModuleCommandType ModuleCommand { get; set; }
+
+    // Year and month of the data to be processed (format: YYYYMM)
     public string DataYearMonth { get; set; }
 }

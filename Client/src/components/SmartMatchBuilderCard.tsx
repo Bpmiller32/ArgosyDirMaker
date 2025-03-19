@@ -300,7 +300,7 @@ export default defineComponent({
       if (expirationDate.value == undefined) {
         expireDays = "";
       } else {
-        /// Convert givenDate and today's date to milliseconds
+        // Convert givenDate and today's date to milliseconds
         const expiration = new Date(expirationDate.value);
         const expirationTime = expiration.getTime();
         const currentTime = new Date().getTime();

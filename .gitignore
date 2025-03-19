@@ -31,3 +31,5 @@ Server/.DS_Store
 /Server/obj
 /TestServer/obj
 TestServer/.DS_Store
+/DataObjects/bin
+/Server/bin

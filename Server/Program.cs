@@ -11,8 +11,8 @@ using Server.Crawlers;
 using Server.ServerMessages;
 using Server.Tester;
 using Server;
-using System.Text.Json;
 
+/* ---------------------------- Application setup --------------------------- */
 string applicationName = "DirMaker";
 using var mutex = new Mutex(false, applicationName);
 
@@ -62,17 +62,21 @@ builder.Services.AddSwaggerGen(options =>
 // Database connection
 builder.Services.AddDbContext<DatabaseContext>(opt => opt.UseSqlite($"Filename={builder.Configuration.GetValue<string>("DatabaseLocation")}"), ServiceLifetime.Transient);
 
-// Crawlers, Builders, Testers registration
+/* -------------------------- Service registration -------------------------- */
+// Crawler services
 builder.Services.AddSingleton<SmartMatchCrawler>();
 builder.Services.AddSingleton<ParascriptCrawler>();
 builder.Services.AddSingleton<RoyalMailCrawler>();
 
+// Builder services
 builder.Services.AddSingleton<SmartMatchBuilder>();
 builder.Services.AddSingleton<ParascriptBuilder>();
 builder.Services.AddSingleton<RoyalMailBuilder>();
 
+// Testing services
 builder.Services.AddSingleton<DirTester>();
 
+// Status reporting
 builder.Services.AddSingleton<StatusReporter>();
 
 // Build Application
@@ -91,6 +95,9 @@ if (!string.IsNullOrEmpty(serverAddress))
     app.Urls.Add(serverAddress);
 }
 
+// Define reverse proxy subdomain for all routes
+string reverseProxySubdomain = "/rafdirmaker";
+
 // Register Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
@@ -102,20 +109,29 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
+// Module name constants
+const string SMARTMATCH_CRAWLER = "SmartMatchCrawler";
+const string PARASCRIPT_CRAWLER = "ParascriptCrawler";
+const string ROYALMAIL_CRAWLER = "RoyalMailCrawler";
+const string SMARTMATCH_BUILDER = "SmartMatchBuilder";
+const string PARASCRIPT_BUILDER = "ParascriptBuilder";
+const string ROYALMAIL_BUILDER = "RoyalMailBuilder";
+
 // Cancellation tokens
 Dictionary<string, CancellationTokenSource> cancelTokens = new()
 {
-    {"SmartMatchCrawler", new()},
-    {"ParascriptCrawler", new()},
-    {"RoyalMailCrawler", new()},
+    {SMARTMATCH_CRAWLER, new()},
+    {PARASCRIPT_CRAWLER, new()},
+    {ROYALMAIL_CRAWLER, new()},
 
-    {"SmartMatchBuilder", new()},
-    {"ParascriptBuilder", new()},
-    {"RoyalMailBuilder", new()},
+    {SMARTMATCH_BUILDER, new()},
+    {PARASCRIPT_BUILDER, new()},
+    {ROYALMAIL_BUILDER, new()},
 };
 
-// Status
-app.MapGet("/status", async (HttpContext context, StatusReporter statusReporter) =>
+/* --------------------------- Register endpoints --------------------------- */
+// Status endpoint
+app.MapGet($"{reverseProxySubdomain}/status", async (HttpContext context, StatusReporter statusReporter) =>
 {
     context.Response.Headers.Append("Content-Type", "text/event-stream");
 
@@ -130,18 +146,18 @@ app.MapGet("/status", async (HttpContext context, StatusReporter statusReporter)
     }
 });
 
-// Crawler Endpoints
-app.MapPost("/smartmatch/crawler", (SmartMatchCrawler smartMatchCrawler, CrawlerMessage serverMessage) =>
+// Crawler endpoints
+app.MapPost($"{reverseProxySubdomain}/smartmatch/crawler", (SmartMatchCrawler crawler, CrawlerMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            cancelTokens["SmartMatchCrawler"] = new();
-            Task.Run(() => smartMatchCrawler.Start(cancelTokens["SmartMatchCrawler"].Token));
+        case ModuleCommandType.Start:
+            cancelTokens[SMARTMATCH_CRAWLER] = new();
+            Task.Run(() => crawler.Start(cancelTokens[SMARTMATCH_CRAWLER].Token));
             return Results.Ok();
 
-        case "stop":
-            cancelTokens["SmartMatchCrawler"].Cancel();
+        case ModuleCommandType.Stop:
+            cancelTokens[SMARTMATCH_CRAWLER].Cancel();
             return Results.Ok();
 
         default:
@@ -149,17 +165,17 @@ app.MapPost("/smartmatch/crawler", (SmartMatchCrawler smartMatchCrawler, Crawler
     }
 });
 
-app.MapPost("/parascript/crawler", (ParascriptCrawler parascriptCrawler, CrawlerMessage serverMessage) =>
+app.MapPost($"{reverseProxySubdomain}/parascript/crawler", (ParascriptCrawler crawler, CrawlerMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            cancelTokens["ParascriptCrawler"] = new();
-            Task.Run(() => parascriptCrawler.Start(cancelTokens["ParascriptCrawler"].Token));
+        case ModuleCommandType.Start:
+            cancelTokens[PARASCRIPT_CRAWLER] = new();
+            Task.Run(() => crawler.Start(cancelTokens[PARASCRIPT_CRAWLER].Token));
             return Results.Ok();
 
-        case "stop":
-            cancelTokens["ParascriptCrawler"].Cancel();
+        case ModuleCommandType.Stop:
+            cancelTokens[PARASCRIPT_CRAWLER].Cancel();
             return Results.Ok();
 
         default:
@@ -167,17 +183,17 @@ app.MapPost("/parascript/crawler", (ParascriptCrawler parascriptCrawler, Crawler
     }
 });
 
-app.MapPost("/royalmail/crawler", (RoyalMailCrawler royalMailCrawler, CrawlerMessage serverMessage) =>
+app.MapPost($"{reverseProxySubdomain}/royalmail/crawler", (RoyalMailCrawler crawler, CrawlerMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            cancelTokens["RoyalMailCrawler"] = new();
-            Task.Run(() => royalMailCrawler.Start(cancelTokens["RoyalMailCrawler"].Token));
+        case ModuleCommandType.Start:
+            cancelTokens[ROYALMAIL_CRAWLER] = new();
+            Task.Run(() => crawler.Start(cancelTokens[ROYALMAIL_CRAWLER].Token));
             return Results.Ok();
 
-        case "stop":
-            cancelTokens["RoyalMailCrawler"].Cancel();
+        case ModuleCommandType.Stop:
+            cancelTokens[ROYALMAIL_CRAWLER].Cancel();
             return Results.Ok();
 
         default:
@@ -185,23 +201,24 @@ app.MapPost("/royalmail/crawler", (RoyalMailCrawler royalMailCrawler, CrawlerMes
     }
 });
 
-// Builder Endpoints
-app.MapPost("/smartmatch/builder", (SmartMatchBuilder smartMatchBuilder, SmartMatchBuilderMessage serverMessage) =>
+// Builder endpoints
+app.MapPost($"{reverseProxySubdomain}/smartmatch/builder", (SmartMatchBuilder builder, SmartMatchBuilderMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            cancelTokens["SmartMatchBuilder"] = new();
+        case ModuleCommandType.Start:
+            cancelTokens[SMARTMATCH_BUILDER] = new();
             Utils.KillSmProcs();
-            if (string.IsNullOrEmpty(serverMessage.ExpireDays) || serverMessage.ExpireDays == "string")
+            if (string.IsNullOrEmpty(message.ExpireDays) || message.ExpireDays == "string")
             {
-                serverMessage.ExpireDays = "105";
+                message.ExpireDays = "105";
             }
-            Task.Run(() => smartMatchBuilder.Start(serverMessage.Cycle, serverMessage.DataYearMonth, cancelTokens["SmartMatchBuilder"], serverMessage.ExpireDays));
+            Task.Run(() => builder.Start(message.Cycle, message.DataYearMonth,
+                cancelTokens[SMARTMATCH_BUILDER], message.ExpireDays));
             return Results.Ok();
 
-        case "stop":
-            cancelTokens["SmartMatchBuilder"].Cancel();
+        case ModuleCommandType.Stop:
+            cancelTokens[SMARTMATCH_BUILDER].Cancel();
             Utils.KillSmProcs();
             return Results.Ok();
 
@@ -210,18 +227,18 @@ app.MapPost("/smartmatch/builder", (SmartMatchBuilder smartMatchBuilder, SmartMa
     }
 });
 
-app.MapPost("/parascript/builder", (ParascriptBuilder parascriptBuilder, ParascriptBuilderMessage serverMessage) =>
+app.MapPost($"{reverseProxySubdomain}/parascript/builder", (ParascriptBuilder builder, ParascriptBuilderMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            cancelTokens["ParascriptBuilder"] = new();
+        case ModuleCommandType.Start:
+            cancelTokens[PARASCRIPT_BUILDER] = new();
             Utils.KillPsProcs();
-            Task.Run(() => parascriptBuilder.Start(serverMessage.DataYearMonth, cancelTokens["ParascriptBuilder"].Token));
+            Task.Run(() => builder.Start(message.DataYearMonth, cancelTokens[PARASCRIPT_BUILDER].Token));
             return Results.Ok();
 
-        case "stop":
-            cancelTokens["ParascriptBuilder"].Cancel();
+        case ModuleCommandType.Stop:
+            cancelTokens[PARASCRIPT_BUILDER].Cancel();
             Utils.KillPsProcs();
             return Results.Ok();
 
@@ -230,18 +247,19 @@ app.MapPost("/parascript/builder", (ParascriptBuilder parascriptBuilder, Parascr
     }
 });
 
-app.MapPost("/royalmail/builder", (RoyalMailBuilder royalMailBuilder, RoyalMailBuilderMessage serverMessage) =>
+app.MapPost($"{reverseProxySubdomain}/royalmail/builder", (RoyalMailBuilder builder, RoyalMailBuilderMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            cancelTokens["RoyalMailBuilder"] = new();
+        case ModuleCommandType.Start:
+            cancelTokens[ROYALMAIL_BUILDER] = new();
             Utils.KillRmProcs();
-            Task.Run(() => royalMailBuilder.Start(serverMessage.DataYearMonth, serverMessage.RoyalMailKey, cancelTokens["RoyalMailBuilder"].Token));
+            Task.Run(() => builder.Start(message.DataYearMonth, message.RoyalMailKey,
+                cancelTokens[ROYALMAIL_BUILDER].Token));
             return Results.Ok();
 
-        case "stop":
-            cancelTokens["RoyalMailBuilder"].Cancel();
+        case ModuleCommandType.Stop:
+            cancelTokens[ROYALMAIL_BUILDER].Cancel();
             Utils.KillRmProcs();
             return Results.Ok();
 
@@ -250,17 +268,17 @@ app.MapPost("/royalmail/builder", (RoyalMailBuilder royalMailBuilder, RoyalMailB
     }
 });
 
-// Tester
-app.MapPost("/dirtester", (DirTester dirTester, TesterMessage serverMessage) =>
+// Tester endpoint
+app.MapPost($"{reverseProxySubdomain}/dirtester", (DirTester tester, TesterMessage message) =>
 {
-    switch (serverMessage.ModuleCommand)
+    switch (message.ModuleCommand)
     {
-        case "start":
-            Task.Run(() => dirTester.Start(serverMessage.TestDirectoryType, serverMessage.DataYearMonth));
+        case ModuleCommandType.Start:
+            Task.Run(() => tester.Start(message.TestDirectoryType, message.DataYearMonth));
             return Results.Ok();
 
-        case "stop":
-            dirTester.Status = ModuleStatus.Ready;
+        case ModuleCommandType.Stop:
+            tester.Status = ModuleStatus.Ready;
             return Results.Ok();
 
         default:
@@ -268,4 +286,6 @@ app.MapPost("/dirtester", (DirTester dirTester, TesterMessage serverMessage) =>
     }
 });
 
+/* ---------------------------- Start application --------------------------- */
+System.Console.WriteLine("Hello World!");
 app.Run();

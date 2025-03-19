@@ -1,6 +1,8 @@
-﻿namespace Server.ServerMessages;
+﻿﻿namespace Server.ServerMessages;
 
-public class CrawlerMessage
+// Message for controlling crawler modules
+public class CrawlerMessage : IModuleMessage
 {
-    public string ModuleCommand { get; set; }
+    // Command to be executed by the crawler module (Start/Stop)
+    public ModuleCommandType ModuleCommand { get; set; }
 }

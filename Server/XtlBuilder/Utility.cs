@@ -530,14 +530,14 @@ namespace Com.Raf.Utility
         [DllImport("mpr.dll")]
         private static extern int WNetCancelConnection2(string sLocalName, uint iFlags, int iForce);
 
-        /// <summary>
-        /// Map network drive 'unc' to local Windows drive 'drive'
-        /// </summary>
-        /// <param name="unc">network path (example: @"\\servername\shardrive")</param>
-        /// <param name="drive">local Windows drive (example: "Q:")</param>
-        /// <param name="user">username (null, if not specified)</param>
-        /// <param name="password">password (null, if not specified)</param>
-        /// <returns></returns>
+        // <summary>
+        // Map network drive 'unc' to local Windows drive 'drive'
+        // </summary>
+        // <param name="unc">network path (example: @"\\servername\shardrive")</param>
+        // <param name="drive">local Windows drive (example: "Q:")</param>
+        // <param name="user">username (null, if not specified)</param>
+        // <param name="password">password (null, if not specified)</param>
+        // <returns></returns>
         public static int MapNetworkDrive(string unc, string drive, string user, string password)
         {
             NETRESOURCE myNetResource = new NETRESOURCE();

@@ -7,9 +7,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Server.ServerMessages;
 
+// Manages status reporting for all system modules
 public class StatusReporter
 {
     private readonly DatabaseContext context;
+
+    // Module instances
     private readonly SmartMatchCrawler smartMatchCrawler;
     private readonly SmartMatchBuilder smartMatchBuilder;
     private readonly ParascriptCrawler parascriptCrawler;
@@ -18,10 +21,31 @@ public class StatusReporter
     private readonly RoyalMailBuilder royalMailBuilder;
     private readonly DirTester dirTester;
 
-    private readonly Dictionary<string, BaseModule> modules = [];
-    private readonly Dictionary<string, ModuleReporter> jsonObject = new() { { "SmartMatch", new() { Crawler = new(), Builder = new() } }, { "Parascript", new() { Crawler = new(), Builder = new() } }, { "RoyalMail", new() { Crawler = new(), Builder = new() } }, { "Tester", new() { Tester = new() } } };
+    // Directory types supported by the system
+    private static readonly string[] DirectoryTypes = { "SmartMatch", "Parascript", "RoyalMail" };
 
-    public StatusReporter(DatabaseContext context, SmartMatchCrawler smartMatchCrawler, SmartMatchBuilder smartMatchBuilder, ParascriptCrawler parascriptCrawler, ParascriptBuilder parascriptBuilder, RoyalMailCrawler royalMailCrawler, RoyalMailBuilder royalMailBuilder, DirTester dirTester)
+    // Module registry for efficient iteration
+    private readonly Dictionary<string, BaseModule> modules = [];
+
+    // Status data structure
+    private readonly Dictionary<string, ModuleReporter> jsonObject = new()
+    {
+        { "SmartMatch", new() { Crawler = new(), Builder = new() } },
+        { "Parascript", new() { Crawler = new(), Builder = new() } },
+        { "RoyalMail", new() { Crawler = new(), Builder = new() } },
+        { "Tester", new() { Tester = new() } }
+    };
+
+    // Initializes a new instance of the StatusReporter class
+    public StatusReporter(
+        DatabaseContext context,
+        SmartMatchCrawler smartMatchCrawler,
+        SmartMatchBuilder smartMatchBuilder,
+        ParascriptCrawler parascriptCrawler,
+        ParascriptBuilder parascriptBuilder,
+        RoyalMailCrawler royalMailCrawler,
+        RoyalMailBuilder royalMailBuilder,
+        DirTester dirTester)
     {
         this.context = context;
         this.smartMatchCrawler = smartMatchCrawler;
@@ -32,158 +56,274 @@ public class StatusReporter
         this.royalMailBuilder = royalMailBuilder;
         this.dirTester = dirTester;
 
-        // Add all modules to a dictionary for looping later
+        // Register all modules for efficient iteration
+        RegisterModules();
+
+        // Initial population of database values
+        InitializeDbValues();
+    }
+
+    // Registers all modules in the modules dictionary for efficient iteration
+    private void RegisterModules()
+    {
+        // SmartMatch modules
         modules.Add("smartMatchCrawler", smartMatchCrawler);
         modules.Add("smartMatchBuilder", smartMatchBuilder);
 
+        // Parascript modules
         modules.Add("parascriptCrawler", parascriptCrawler);
         modules.Add("parascriptBuilder", parascriptBuilder);
 
+        // RoyalMail modules
         modules.Add("royalMailCrawler", royalMailCrawler);
         modules.Add("royalMailBuilder", royalMailBuilder);
 
+        // Tester module
         modules.Add("dirTester", dirTester);
-
-
-        // Initial population of db values
-        UpdateAndStringifyDbValuesAsync("SmartMatch").Wait();
-        UpdateAndStringifyDbValuesAsync("Parascript").Wait();
-        UpdateAndStringifyDbValuesAsync("RoyalMail").Wait();
     }
 
+    // Initializes database values for all directory types
+    private void InitializeDbValues()
+    {
+        // Using ConfigureAwait(false) to avoid deadlocks
+        Task.Run(async () =>
+        {
+            foreach (var directoryType in DirectoryTypes)
+            {
+                await UpdateAndStringifyDbValuesAsync(directoryType).ConfigureAwait(false);
+            }
+        });
+    }
+
+    // Updates database values for a specific directory type
     private async Task UpdateAndStringifyDbValuesAsync(string directoryType)
     {
-        // For Crawler
-        jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth = "";
-        jsonObject[directoryType].Crawler.ReadyToBuild.FileCount = "";
-        jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate = "";
-        jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime = "";
-        if (directoryType == "SmartMatch")
+        try
         {
-            await context.UspsBundles.Where(x => x.IsReadyForBuild == true && x.Cycle == "Cycle-O").ForEachAsync((bundle) =>
-             {
-                 jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth += $"{bundle.DataYearMonth}|";
-                 jsonObject[directoryType].Crawler.ReadyToBuild.FileCount += $"{bundle.FileCount}|";
-                 jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate += $"{bundle.DownloadDate}|";
-                 jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime += $"{bundle.DownloadTime}|";
-             });
-        }
-        else if (directoryType == "Parascript")
-        {
-            await context.ParaBundles.Where(x => x.IsReadyForBuild == true).ForEachAsync((bundle) =>
-            {
-                jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth += $"{bundle.DataYearMonth}|";
-                jsonObject[directoryType].Crawler.ReadyToBuild.FileCount += $"{bundle.FileCount}|";
-                jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate += $"{bundle.DownloadDate}|";
-                jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime += $"{bundle.DownloadTime}|";
-            });
-        }
-        else if (directoryType == "RoyalMail")
-        {
-            await context.RoyalBundles.Where(x => x.IsReadyForBuild == true).ForEachAsync((bundle) =>
-            {
-                jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth += $"{bundle.DataYearMonth}|";
-                jsonObject[directoryType].Crawler.ReadyToBuild.FileCount += $"{bundle.FileCount}|";
-                jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate += $"{bundle.DownloadDate}|";
-                jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime += $"{bundle.DownloadTime}|";
-            });
-        }
-        if (jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth.Length > 0)
-        {
-            jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth = jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth.Remove(jsonObject[directoryType].Crawler.ReadyToBuild.DataYearMonth.Length - 1);
-            jsonObject[directoryType].Crawler.ReadyToBuild.FileCount = jsonObject[directoryType].Crawler.ReadyToBuild.FileCount.Remove(jsonObject[directoryType].Crawler.ReadyToBuild.FileCount.Length - 1);
-            jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate = jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate.Remove(jsonObject[directoryType].Crawler.ReadyToBuild.DownloadDate.Length - 1);
-            jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime = jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime.Remove(jsonObject[directoryType].Crawler.ReadyToBuild.DownloadTime.Length - 1);
-        }
+            // Reset crawler values
+            ResetCrawlerValues(directoryType);
 
-        // For Builder
-        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth = "";
-        if (directoryType == "SmartMatch")
-        {
-            await context.UspsBundles.Where(x => x.IsBuildComplete == true && x.Cycle == "Cycle-O").ForEachAsync((bundle) =>
-            {
-                jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|";
-            });
+            // Update crawler values from database
+            await UpdateCrawlerValuesFromDatabaseAsync(directoryType).ConfigureAwait(false);
+
+            // Trim trailing pipe characters if data exists
+            TrimTrailingPipes(directoryType);
+
+            // Reset and update builder values
+            await UpdateBuilderValuesAsync(directoryType).ConfigureAwait(false);
         }
-        else if (directoryType == "Parascript")
+        catch (Exception ex)
         {
-            await context.ParaBundles.Where(x => x.IsBuildComplete == true).ForEachAsync((bundle) =>
-            {
-                jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|";
-            });
-        }
-        else if (directoryType == "RoyalMail")
-        {
-            await context.RoyalBundles.Where(x => x.IsBuildComplete == true).ForEachAsync((bundle) =>
-            {
-                jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|";
-            });
-        }
-        if (jsonObject[directoryType].Builder.BuildComplete.DataYearMonth.Length > 0)
-        {
-            jsonObject[directoryType].Builder.BuildComplete.DataYearMonth = jsonObject[directoryType].Builder.BuildComplete.DataYearMonth.Remove(jsonObject[directoryType].Builder.BuildComplete.DataYearMonth.Length - 1);
+            // Log the exception (in a real system, use a proper logging framework)
+            Console.Error.WriteLine($"Error updating {directoryType} values: {ex.Message}");
         }
     }
 
-    public async Task<string> UpdateReport()
+    // Resets crawler values for a specific directory type
+    private void ResetCrawlerValues(string directoryType)
     {
-        foreach (var module in modules)
+        var readyToBuild = jsonObject[directoryType].Crawler.ReadyToBuild;
+        readyToBuild.DataYearMonth = "";
+        readyToBuild.FileCount = "";
+        readyToBuild.DownloadDate = "";
+        readyToBuild.DownloadTime = "";
+    }
+
+    // Updates crawler values from the database for a specific directory type
+    private async Task UpdateCrawlerValuesFromDatabaseAsync(string directoryType)
+    {
+        var readyToBuild = jsonObject[directoryType].Crawler.ReadyToBuild;
+
+        switch (directoryType)
         {
-            // Update db's only if nessasary, otherwise use stored values
-            if (!module.Value.SendDbUpdate)
-            {
-                continue;
-            }
+            case "SmartMatch":
+                await context.UspsBundles
+                    .Where(x => x.IsReadyForBuild && x.Cycle == "Cycle-O")
+                    .ForEachAsync(bundle => AppendBundleData(readyToBuild, bundle))
+                    .ConfigureAwait(false);
+                break;
 
-            if (module.Key.Contains("smartMatch"))
-            {
-                await UpdateAndStringifyDbValuesAsync("SmartMatch");
-            }
-            else if (module.Key.Contains("parascript"))
-            {
-                await UpdateAndStringifyDbValuesAsync("Parascript");
-            }
-            else if (module.Key.Contains("royalMail"))
-            {
-                await UpdateAndStringifyDbValuesAsync("RoyalMail");
-            }
+            case "Parascript":
+                await context.ParaBundles
+                    .Where(x => x.IsReadyForBuild)
+                    .ForEachAsync(bundle => AppendBundleData(readyToBuild, bundle))
+                    .ConfigureAwait(false);
+                break;
 
-            // Turn off the flag
-            module.Value.SendDbUpdate = false;
+            case "RoyalMail":
+                await context.RoyalBundles
+                    .Where(x => x.IsReadyForBuild)
+                    .ForEachAsync(bundle => AppendBundleData(readyToBuild, bundle))
+                    .ConfigureAwait(false);
+                break;
+        }
+    }
+
+    // Appends bundle data to the ready-to-build reporter
+    private void AppendBundleData(ReadyToBuildReporter reporter, BaseBundle bundle)
+    {
+        reporter.DataYearMonth += $"{bundle.DataYearMonth}|";
+        reporter.FileCount += $"{bundle.FileCount}|";
+        reporter.DownloadDate += $"{bundle.DownloadDate}|";
+        reporter.DownloadTime += $"{bundle.DownloadTime}|";
+    }
+
+    // Trims trailing pipe characters from crawler values if data exists
+    private void TrimTrailingPipes(string directoryType)
+    {
+        var readyToBuild = jsonObject[directoryType].Crawler.ReadyToBuild;
+
+        if (readyToBuild.DataYearMonth.Length > 0)
+        {
+            readyToBuild.DataYearMonth = TrimLastCharacter(readyToBuild.DataYearMonth);
+            readyToBuild.FileCount = TrimLastCharacter(readyToBuild.FileCount);
+            readyToBuild.DownloadDate = TrimLastCharacter(readyToBuild.DownloadDate);
+            readyToBuild.DownloadTime = TrimLastCharacter(readyToBuild.DownloadTime);
+        }
+    }
+
+    // Removes the last character from a string
+    private string TrimLastCharacter(string value)
+    {
+        if (value.Length > 0)
+        {
+            return value.Remove(value.Length - 1);
+        }
+        else
+        {
+            return value;
+        }
+    }
+
+    // Updates builder values for a specific directory type
+    private async Task UpdateBuilderValuesAsync(string directoryType)
+    {
+        // Reset builder values
+        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth = "";
+
+        // Update builder values from database
+        switch (directoryType)
+        {
+            case "SmartMatch":
+                await context.UspsBundles
+                    .Where(x => x.IsBuildComplete && x.Cycle == "Cycle-O")
+                    .ForEachAsync(bundle =>
+                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|")
+                    .ConfigureAwait(false);
+                break;
+
+            case "Parascript":
+                await context.ParaBundles
+                    .Where(x => x.IsBuildComplete)
+                    .ForEachAsync(bundle =>
+                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|")
+                    .ConfigureAwait(false);
+                break;
+
+            case "RoyalMail":
+                await context.RoyalBundles
+                    .Where(x => x.IsBuildComplete)
+                    .ForEachAsync(bundle =>
+                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|")
+                    .ConfigureAwait(false);
+                break;
         }
 
-        jsonObject["SmartMatch"].Crawler.Status = smartMatchCrawler.Status;
-        jsonObject["SmartMatch"].Crawler.Progress = smartMatchCrawler.Progress;
-        jsonObject["SmartMatch"].Crawler.Message = smartMatchCrawler.Message;
+        // Trim trailing pipe character if data exists
+        var dataYearMonth = jsonObject[directoryType].Builder.BuildComplete.DataYearMonth;
+        if (dataYearMonth.Length > 0)
+        {
+            jsonObject[directoryType].Builder.BuildComplete.DataYearMonth = TrimLastCharacter(dataYearMonth);
+        }
+    }
 
-        jsonObject["Parascript"].Crawler.Status = parascriptCrawler.Status;
-        jsonObject["Parascript"].Crawler.Progress = parascriptCrawler.Progress;
-        jsonObject["Parascript"].Crawler.Message = parascriptCrawler.Message;
+    // Updates the status report with the latest module information
+    public async Task<string> UpdateReport()
+    {
+        try
+        {
+            // Process database updates for modules that have requested it
+            await ProcessDatabaseUpdatesAsync().ConfigureAwait(false);
 
-        jsonObject["RoyalMail"].Crawler.Status = royalMailCrawler.Status;
-        jsonObject["RoyalMail"].Crawler.Progress = royalMailCrawler.Progress;
-        jsonObject["RoyalMail"].Crawler.Message = royalMailCrawler.Message;
+            // Update module status information
+            UpdateModuleStatusInformation();
 
-        jsonObject["SmartMatch"].Builder.Status = smartMatchBuilder.Status;
-        jsonObject["SmartMatch"].Builder.Progress = smartMatchBuilder.Progress;
-        jsonObject["SmartMatch"].Builder.Message = smartMatchBuilder.Message;
-        jsonObject["SmartMatch"].Builder.CurrentTask = smartMatchBuilder.CurrentTask;
+            // Serialize the status report to JSON
+            return JsonSerializer.Serialize(jsonObject);
+        }
+        catch (Exception ex)
+        {
+            // Log the exception and return an error message
+            Console.Error.WriteLine($"Error updating report: {ex.Message}");
+            return JsonSerializer.Serialize(new { Error = ex.Message });
+        }
+    }
 
-        jsonObject["Parascript"].Builder.Status = parascriptBuilder.Status;
-        jsonObject["Parascript"].Builder.Progress = parascriptBuilder.Progress;
-        jsonObject["Parascript"].Builder.Message = parascriptBuilder.Message;
-        jsonObject["Parascript"].Builder.CurrentTask = parascriptBuilder.CurrentTask;
+    // Processes database updates for modules that have requested it
+    private async Task ProcessDatabaseUpdatesAsync()
+    {
+        // Group modules by directory type to process updates efficiently
+        var modulesByType = new Dictionary<string, List<KeyValuePair<string, BaseModule>>>();
 
-        jsonObject["RoyalMail"].Builder.Status = royalMailBuilder.Status;
-        jsonObject["RoyalMail"].Builder.Progress = royalMailBuilder.Progress;
-        jsonObject["RoyalMail"].Builder.Message = royalMailBuilder.Message;
-        jsonObject["RoyalMail"].Builder.CurrentTask = royalMailBuilder.CurrentTask;
+        // Find modules that need database updates
+        var modulesToUpdate = modules.Where(m => m.Value.SendDbUpdate).ToList();
 
+        // Process updates by directory type
+        foreach (var directoryType in DirectoryTypes)
+        {
+            var typeModules = modulesToUpdate.Where(m => m.Key.Contains(directoryType.ToLower(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (typeModules.Count != 0)
+            {
+                // Update database values for this directory type
+                await UpdateAndStringifyDbValuesAsync(directoryType).ConfigureAwait(false);
+
+                // Reset the SendDbUpdate flag for processed modules
+                foreach (var module in typeModules)
+                {
+                    module.Value.SendDbUpdate = false;
+                }
+            }
+        }
+    }
+
+    // Updates module status information in the JSON object
+    private void UpdateModuleStatusInformation()
+    {
+        // Update SmartMatch module status
+        UpdateModuleStatus("SmartMatch", smartMatchCrawler, smartMatchBuilder);
+
+        // Update Parascript module status
+        UpdateModuleStatus("Parascript", parascriptCrawler, parascriptBuilder);
+
+        // Update RoyalMail module status
+        UpdateModuleStatus("RoyalMail", royalMailCrawler, royalMailBuilder);
+
+        // Update Tester module status
+        UpdateTesterStatus();
+    }
+
+    // Updates status information for a specific directory type
+    private void UpdateModuleStatus(string directoryType, BaseModule crawler, BaseModule builder)
+    {
+        // Update crawler status
+        jsonObject[directoryType].Crawler.Status = crawler.Status;
+        jsonObject[directoryType].Crawler.Progress = crawler.Progress;
+        jsonObject[directoryType].Crawler.Message = crawler.Message;
+
+        // Update builder status
+        jsonObject[directoryType].Builder.Status = builder.Status;
+        jsonObject[directoryType].Builder.Progress = builder.Progress;
+        jsonObject[directoryType].Builder.Message = builder.Message;
+        jsonObject[directoryType].Builder.CurrentTask = builder.CurrentTask;
+    }
+
+    // Updates tester status information
+    private void UpdateTesterStatus()
+    {
         jsonObject["Tester"].Tester.Status = dirTester.Status;
         jsonObject["Tester"].Tester.Progress = dirTester.Progress;
         jsonObject["Tester"].Tester.Message = dirTester.Message;
         jsonObject["Tester"].Tester.CurrentTask = dirTester.CurrentTask;
-
-        return JsonSerializer.Serialize(jsonObject);
     }
 }
