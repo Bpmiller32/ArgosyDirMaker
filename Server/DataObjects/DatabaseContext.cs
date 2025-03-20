@@ -2,13 +2,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Server.DataObjects;
 
-// Entity Framework database context for the application
-// Provides access to all database tables/entities
-public class DatabaseContext : DbContext
+// Entity Framework database context for the application. Provides access to all database tables/entities
+public class DatabaseContext(DbContextOptions<DatabaseContext> options) : DbContext(options)
 {
-    public DatabaseContext(DbContextOptions<DatabaseContext> options) : base(options) { }
-
-    // USPS (United States Postal Service) data
+    // USPS data
     public DbSet<UspsBundle> UspsBundles { get; set; }
     public DbSet<UspsFile> UspsFiles { get; set; }
 

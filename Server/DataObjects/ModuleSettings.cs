@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Configuration;
-
 namespace Server.DataObjects;
 
 // Configuration settings for modules with path and authentication information
@@ -34,7 +32,7 @@ public class ModuleSettings
     private void ValidateAddressDataPath(IConfiguration config)
     {
         string configPath = config.GetValue<string>($"{DirectoryName}:AddressDataPath");
-        
+
         if (string.IsNullOrEmpty(configPath))
         {
             // Use default path if not specified in config
@@ -50,7 +48,7 @@ public class ModuleSettings
     private void ValidateWorkingPath(IConfiguration config)
     {
         string configPath = config.GetValue<string>($"{DirectoryName}:WorkingPath");
-        
+
         if (string.IsNullOrEmpty(configPath))
         {
             // Create and use default path if not specified in config
@@ -68,7 +66,7 @@ public class ModuleSettings
     private void ValidateOutputPath(IConfiguration config)
     {
         string configPath = config.GetValue<string>($"{DirectoryName}:OutputPath");
-        
+
         if (string.IsNullOrEmpty(configPath))
         {
             // Create and use default path if not specified in config
@@ -86,7 +84,7 @@ public class ModuleSettings
     private void ValidateDongleListPath(IConfiguration config)
     {
         string configPath = config.GetValue<string>("DongleListPath");
-        
+
         if (string.IsNullOrEmpty(configPath))
         {
             // Create and use default path if not specified in config
@@ -104,12 +102,12 @@ public class ModuleSettings
     private void ValidateDiscDrivePath(IConfiguration config)
     {
         string configPath = config.GetValue<string>($"{DirectoryName}:TestDrivePath");
-        
+
         if (string.IsNullOrEmpty(configPath))
         {
             throw new Exception($"Test drive path for {DirectoryName} is missing in appsettings");
         }
-        
+
         DiscDrivePath = Path.GetFullPath(configPath);
     }
 
@@ -121,15 +119,15 @@ public class ModuleSettings
         {
             return;
         }
-        
+
         string username = config.GetValue<string>($"{DirectoryName}:Login:User");
         string password = config.GetValue<string>($"{DirectoryName}:Login:Pass");
-        
+
         if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
         {
             throw new Exception($"Missing username or password for: {DirectoryName}");
         }
-        
+
         UserName = username;
         Password = password;
     }

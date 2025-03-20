@@ -4,5 +4,5 @@ namespace Server.DataObjects;
 public class ParaBundle : BaseBundle
 {
     // Collection of files included in this bundle
-    public List<ParaFile> BuildFiles { get; set; } = new List<ParaFile>();
+    public List<ParaFile> BuildFiles { get; set; } = [];
 }

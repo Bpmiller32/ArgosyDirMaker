@@ -4,5 +4,5 @@ namespace Server.DataObjects;
 public class RoyalBundle : BaseBundle
 {
     // Collection of files included in this bundle
-    public List<RoyalFile> BuildFiles { get; set; } = new List<RoyalFile>();
+    public List<RoyalFile> BuildFiles { get; set; } = [];
 }

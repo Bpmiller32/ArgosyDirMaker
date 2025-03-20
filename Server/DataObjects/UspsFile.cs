@@ -1,6 +1,6 @@
 namespace Server.DataObjects;
 
-// Represents a USPS (United States Postal Service) data file with metadata
+// Represents a USPS data file with metadata
 public class UspsFile : BaseFile
 {
     // Data pulled from website
