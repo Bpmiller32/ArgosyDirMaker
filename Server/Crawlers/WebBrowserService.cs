@@ -1,20 +1,26 @@
 using PuppeteerSharp;
 using System.Text.RegularExpressions;
+using HtmlAgilityPack;
+using Server.DataObjects;
 
 namespace Server.Crawlers;
 
 // Service for handling web browser interactions using Puppeteer
 public class WebBrowserService
 {
+    // DI
     private readonly ILogger logger;
 
-    // Constants
+    // Fields
     private const string PARASCRIPT_URL = "https://parascript.sharefile.com/share/view/s80765117d4441b88";
+    private const string SMARTMATCH_URL = "https://epf.usps.gov/";
 
     public WebBrowserService(ILogger logger)
     {
         this.logger = logger;
     }
+
+    /* ----------------------- Generic Browser Methods ---------------------- */
 
     // Initializes a browser instance with the specified options
     public async Task<(Browser browser, Page page)> InitializeBrowser(bool headless = true, string downloadPath = null)
@@ -33,19 +39,25 @@ public class WebBrowserService
         // Configure download behavior if path is provided
         if (!string.IsNullOrEmpty(downloadPath))
         {
-            await page.Client.SendAsync("Page.setDownloadBehavior", new { behavior = "allow", downloadPath });
+            await ConfigureDownloadPath(page, downloadPath);
         }
 
         return (browser, page);
     }
 
-    // Navigates to the Parascript download portal
-    public async Task NavigateToParascriptPortal(Page page)
+    // Generic method to navigate to any URL
+    public async Task NavigateToUrl(Page page, string url)
     {
-        await page.GoToAsync(PARASCRIPT_URL);
+        await page.GoToAsync(url);
     }
 
-    /// Finds an element on the page that contains the specified text using multiple search strategies
+    // Configure download path for a page
+    public async Task ConfigureDownloadPath(Page page, string downloadPath)
+    {
+        await page.Client.SendAsync("Page.setDownloadBehavior", new { behavior = "allow", downloadPath });
+    }
+
+    // Generic method to find an element by text
     public async Task<IElementHandle> FindElementByText(Page page, string text, int timeout = 5000, CancellationToken stoppingToken = default)
     {
         // Try XPath with text content
@@ -118,7 +130,7 @@ public class WebBrowserService
         return null;
     }
 
-    // Waits for an element containing the specified text to appear and remain stable on the page
+    // Generic method to wait for an element with text to appear
     public async Task<IElementHandle> WaitForTextElement(Page page, string text, int maxAttempts = 5, int stabilityDelay = 1000, CancellationToken stoppingToken = default)
     {
         for (int attempt = 0; attempt < maxAttempts; attempt++)
@@ -173,21 +185,104 @@ public class WebBrowserService
         return null;
     }
 
-    // Extracts file information from the page content
-    public async Task<(string month, string year)> ExtractFileInfo(Page page)
+    // Generic method to wait for downloads to complete
+    public async Task<bool> WaitForDownloadsToComplete(string downloadPath, string fileExtension = ".CRDOWNLOAD", int maxAttempts = 60, int delaySeconds = 10, CancellationToken stoppingToken = default)
+    {
+        int attempts = 0;
+
+        while (attempts < maxAttempts)
+        {
+            if (stoppingToken.IsCancellationRequested)
+            {
+                logger.LogInformation("Download monitoring was stopped due to cancellation");
+                return false;
+            }
+
+            string[] files = Directory.GetFiles(downloadPath, $"*{fileExtension}");
+
+            if (files.Length < 1)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
+            attempts++;
+        }
+
+        logger.LogWarning("Download wait timeout reached");
+        return false;
+    }
+
+    // Generic method to wait for a specific file to download
+    public async Task<bool> WaitForFileDownload(string filePath, int maxAttempts = 30, int delaySeconds = 10, CancellationToken stoppingToken = default)
+    {
+        int attempts = 0;
+        string crdownloadPath = filePath + ".CRDOWNLOAD";
+
+        while (attempts < maxAttempts)
+        {
+            if (stoppingToken.IsCancellationRequested)
+            {
+                logger.LogInformation("Download monitoring was stopped due to cancellation");
+                return false;
+            }
+
+            // Check if download is complete (CRDOWNLOAD file no longer exists)
+            if (!File.Exists(crdownloadPath))
+            {
+                // Verify the actual file exists
+                if (File.Exists(filePath))
+                {
+                    return true;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
+            attempts++;
+        }
+
+        logger.LogWarning($"Download timeout for file: {Path.GetFileName(filePath)}");
+        return false;
+    }
+
+    // Generic method to click an element
+    public async Task ClickElement(Page page, string selector)
+    {
+        await page.ClickAsync(selector);
+    }
+
+    // Generic method to type text
+    public async Task TypeText(Page page, string selector, string text)
+    {
+        await page.FocusAsync(selector);
+        await page.Keyboard.TypeAsync(text);
+    }
+
+    /* ----------------------- Crawler-Specific Methods ---------------------- */
+
+    /* --- Parascript Methods --- */
+
+    // Navigate to Parascript portal (convenience method using generic NavigateToUrl)
+    public async Task NavigateToParascriptPortal(Page page)
+    {
+        await NavigateToUrl(page, PARASCRIPT_URL);
+    }
+
+    // Extract Parascript file information using a regex pattern
+    public async Task<(string month, string year)> ExtractParascriptFileInfo(Page page, string pattern = "ads_zip_09_")
     {
         HtmlAgilityPack.HtmlDocument doc = new();
         doc.LoadHtml(await page.GetContentAsync());
 
         // Search for nodes containing the pattern
-        HtmlAgilityPack.HtmlNode node = null;
+        HtmlNode node = null;
 
         // Try different search strategies
-        node = doc.DocumentNode.SelectSingleNode("//span[contains(text(), 'ads_zip_09_')] | //div[contains(text(), 'ads_zip_09_')]");
+        node = doc.DocumentNode.SelectSingleNode($"//span[contains(text(), '{pattern}')] | //div[contains(text(), '{pattern}')]");
 
         if (node == null)
         {
-            var allTextNodes = doc.DocumentNode.SelectNodes("//text()[contains(., 'ads_zip_09_')]");
+            var allTextNodes = doc.DocumentNode.SelectNodes($"//text()[contains(., '{pattern}')]");
 
             if (allTextNodes != null && allTextNodes.Count > 0)
             {
@@ -202,7 +297,7 @@ public class WebBrowserService
             {
                 foreach (var n in allNodes)
                 {
-                    if (n.InnerText.Contains("ads_zip_09_"))
+                    if (n.InnerText.Contains(pattern))
                     {
                         node = n;
                         break;
@@ -213,12 +308,12 @@ public class WebBrowserService
 
         if (node == null)
         {
-            throw new Exception("Could not find node containing 'ads_zip_09_' pattern");
+            throw new Exception($"Could not find node containing '{pattern}' pattern");
         }
 
         // Extract the year/month information using regex
         string nodeText = node.InnerText;
-        var match = Regex.Match(nodeText, @"ads_zip_09_(\d{2})(\d{2})");
+        var match = Regex.Match(nodeText, $@"{pattern}(\d{{2}})(\d{{2}})");
 
         if (!match.Success)
         {
@@ -231,32 +326,135 @@ public class WebBrowserService
         return (month, year);
     }
 
-    // Waits for downloads to complete
-    public async Task<bool> WaitForDownloadsToComplete(string downloadPath, CancellationToken stoppingToken)
+    /* --- SmartMatch Methods --- */
+
+    // Navigate to SmartMatch portal (convenience method using generic NavigateToUrl)
+    public async Task NavigateToSmartMatchPortal(Page page)
     {
-        const int maxAttempts = 60; // 10 minutes maximum (60 * 10 seconds)
-        int attempts = 0;
+        await NavigateToUrl(page, SMARTMATCH_URL);
+    }
 
-        while (attempts < maxAttempts)
+    // Login to SmartMatch portal
+    public async Task LoginToSmartMatchPortal(Page page, string username, string password, CancellationToken stoppingToken)
+    {
+        try
         {
-            if (stoppingToken.IsCancellationRequested)
-            {
-                logger.LogInformation("Download monitoring was stopped due to cancellation");
-                return false;
-            }
+            // Wait for login form elements
+            await page.WaitForSelectorAsync("#email");
+            await TypeText(page, "#email", username);
+            await TypeText(page, "#password", password);
 
-            string[] files = Directory.GetFiles(downloadPath, "*.CRDOWNLOAD");
+            // Click login button
+            await ClickElement(page, "#login");
 
-            if (files.Length < 1)
-            {
-                return true;
-            }
+            // Wait for post-login elements
+            await page.WaitForSelectorAsync("#r1");
+            await ClickElement(page, "#r1");
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
-            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-            attempts++;
+            await page.WaitForSelectorAsync("#r2");
+            await ClickElement(page, "#r2");
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+            // Wait for file list to load
+            await page.WaitForSelectorAsync("#tblFileList > tbody");
         }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error logging in to SmartMatch portal: {ex.Message}");
+            throw;
+        }
+    }
 
-        logger.LogWarning("Download wait timeout reached");
-        return false;
+    // Extract SmartMatch file information
+    public async Task<List<DataFile>> ExtractSmartMatchFileInfo(Page page)
+    {
+        // Create a list to hold the file information
+        var fileInfoList = new List<DataFile>();
+
+        try
+        {
+            // Get page HTML content
+            HtmlAgilityPack.HtmlDocument doc = new();
+            doc.LoadHtml(await page.GetContentAsync());
+
+            // Extract file rows
+            var fileRows = doc.DocumentNode.SelectNodes("/html/body/div[2]/table/tbody/tr/td/div[3]/table/tbody/tr/td/div/table/tbody/tr");
+
+            if (fileRows == null || fileRows.Count == 0)
+            {
+                logger.LogWarning("No file rows found in SmartMatch portal");
+                return fileInfoList;
+            }
+
+            foreach (HtmlNode fileRow in fileRows)
+            {
+                // Skip non-data files
+                string fileName = fileRow.ChildNodes[5].InnerText.Trim();
+                if (fileName.Contains(".zip", StringComparison.OrdinalIgnoreCase) || fileName.Contains(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Extract upload date
+                DateTime uploadDate = DateTime.Parse(fileRow.ChildNodes[3].InnerText.Trim());
+
+                // Extract product description to determine cycle
+                string productDescription = fileRow.ChildNodes[2].InnerText.Trim();
+                string cycle = productDescription.Contains("Cycle O") ? "Cycle-O" : "Cycle-N";
+
+                // Extract other file information
+                string size = fileRow.ChildNodes[6].InnerText.Trim();
+                string productKey = fileRow.Attributes[0].Value.Trim().Substring(19, 5);
+                string fileId = fileRow.Attributes[1].Value.Trim().Substring(3, 7);
+
+                // Create a new DataFile object and add it to the list
+                var file = DatabaseExtensions.CreateUspsFile(
+                    fileName,
+                    uploadDate.Month,
+                    uploadDate.Year,
+                    uploadDate.Month < 10
+                        ? uploadDate.Year.ToString() + "0" + uploadDate.Month.ToString()
+                        : uploadDate.Year.ToString() + uploadDate.Month.ToString(),
+                    cycle);
+
+                // Set USPS-specific properties
+                file.UploadDate = uploadDate;
+                file.Size = size;
+                file.ProductKey = productKey;
+                file.FileId = fileId;
+                file.OnDisk = true;
+
+                fileInfoList.Add(file);
+            }
+
+            return fileInfoList;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error extracting SmartMatch file info: {ex.Message}");
+            throw;
+        }
+    }
+
+    // Download a SmartMatch file
+    public async Task DownloadSmartMatchFile(Page page, string fileId, string downloadPath, CancellationToken stoppingToken)
+    {
+        try
+        {
+            // Set download path
+            await ConfigureDownloadPath(page, downloadPath);
+
+            // Click download button for specific file
+            await page.EvaluateExpressionAsync($"document.querySelector('#td_{fileId}').childNodes[0].click()");
+
+            // Wait for download to start
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error downloading SmartMatch file {fileId}: {ex.Message}");
+            throw;
+        }
     }
 }

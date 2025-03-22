@@ -221,7 +221,7 @@ public class ParascriptBuilder : BaseModule
         }
 
         // Will be null if Crawler never made a record for it, watch out if running standalone
-        ParaBundle bundle = context.ParaBundles.Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
+        Bundle bundle = context.ParaBundles().Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
         bundle.IsBuildComplete = true;
         bundle.CompileTimestamp = DateTime.Now;
 

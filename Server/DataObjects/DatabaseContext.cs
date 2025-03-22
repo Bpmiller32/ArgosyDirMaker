@@ -3,20 +3,22 @@ using Microsoft.EntityFrameworkCore;
 namespace Server.DataObjects;
 
 // Entity Framework database context for the application. Provides access to all database tables/entities
-public class DatabaseContext(DbContextOptions<DatabaseContext> options) : DbContext(options)
+public class DatabaseContext : DbContext
 {
-    // USPS data
-    public DbSet<UspsBundle> UspsBundles { get; set; }
-    public DbSet<UspsFile> UspsFiles { get; set; }
-
-    // Parascript data
-    public DbSet<ParaBundle> ParaBundles { get; set; }
-    public DbSet<ParaFile> ParaFiles { get; set; }
-
-    // Royal Mail data
-    public DbSet<RoyalBundle> RoyalBundles { get; set; }
-    public DbSet<RoyalFile> RoyalFiles { get; set; }
-
-    // PAF (Postcode Address File) keys
+    public DatabaseContext(DbContextOptions<DatabaseContext> options) : base(options) { }
+    
+    public DbSet<Bundle> Bundles { get; set; }
+    public DbSet<DataFile> Files { get; set; }
     public DbSet<PafKey> PafKeys { get; set; }
+    
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        
+        // Configure relationships
+        modelBuilder.Entity<DataFile>()
+            .HasOne(f => f.Bundle)
+            .WithMany(b => b.Files)
+            .HasForeignKey(f => f.BundleId);
+    }
 }

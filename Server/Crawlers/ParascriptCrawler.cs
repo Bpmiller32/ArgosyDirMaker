@@ -11,11 +11,11 @@ public class ParascriptCrawler : BaseModule
     private readonly IConfiguration config;
     private readonly DatabaseContext context;
 
-    // Constants
+    // Fields
     private const string ADS_FILE_NAME = "ads6";
     private const string DPV_FILE_NAME = "DPVandLACS";
 
-    private readonly List<ParaFile> tempFiles = [];
+    private readonly List<DataFile> tempFiles = [];
     private readonly WebBrowserService browserService;
 
     public ParascriptCrawler(ILogger<ParascriptCrawler> logger, IConfiguration config, DatabaseContext context)
@@ -131,32 +131,28 @@ public class ParascriptCrawler : BaseModule
                 await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
 
                 // Extract file information
-                var (month, year) = await browserService.ExtractFileInfo(page);
+                var (month, year) = await browserService.ExtractParascriptFileInfo(page);
 
                 // Create file records
                 string fullYear = string.Concat("20", year);
                 string yearMonth = string.Concat(fullYear, month);
 
                 // Create ADS file record
-                ParaFile adsFile = new()
-                {
-                    FileName = ADS_FILE_NAME,
-                    DataMonth = int.Parse(month),
-                    DataYear = int.Parse(fullYear),
-                    DataYearMonth = yearMonth,
-                    OnDisk = true
-                };
+                var adsFile = DatabaseExtensions.CreateParaFile(
+                    ADS_FILE_NAME,
+                    int.Parse(month),
+                    int.Parse(fullYear),
+                    yearMonth);
+                adsFile.OnDisk = true;
                 tempFiles.Add(adsFile);
 
                 // Create DPV file record
-                ParaFile dpvFile = new()
-                {
-                    FileName = DPV_FILE_NAME,
-                    DataMonth = int.Parse(month),
-                    DataYear = int.Parse(fullYear),
-                    DataYearMonth = yearMonth,
-                    OnDisk = true
-                };
+                var dpvFile = DatabaseExtensions.CreateParaFile(
+                    DPV_FILE_NAME,
+                    int.Parse(month),
+                    int.Parse(fullYear),
+                    yearMonth);
+                dpvFile.OnDisk = true;
                 tempFiles.Add(dpvFile);
 
                 logger.LogInformation($"Found files for {month}/{fullYear}");
@@ -178,12 +174,12 @@ public class ParascriptCrawler : BaseModule
             return;
         }
 
-        foreach (ParaFile file in tempFiles)
+        foreach (DataFile file in tempFiles)
         {
             try
             {
                 // Check if file is unique against the db
-                bool fileInDb = context.ParaFiles.Any(x => file.FileName == x.FileName && file.DataMonth == x.DataMonth && file.DataYear == x.DataYear);
+                bool fileInDb = context.ParaFiles().Any(x => file.FileName == x.FileName && file.DataMonth == x.DataMonth && file.DataYear == x.DataYear);
 
                 // File already in database
                 if (fileInDb)
@@ -192,7 +188,7 @@ public class ParascriptCrawler : BaseModule
                 }
 
                 // Add file to database
-                context.ParaFiles.Add(file);
+                context.Files.Add(file);
 
                 // Check if the folder exists on the disk
                 string filePath = Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.FileName);
@@ -203,31 +199,28 @@ public class ParascriptCrawler : BaseModule
                 }
 
                 // Check if bundle exists for this month/year
-                bool bundleExists = context.ParaBundles.Any(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear);
+                bool bundleExists = context.ParaBundles().Any(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear);
 
                 if (!bundleExists)
                 {
                     // Create new bundle
-                    ParaBundle newBundle = new()
-                    {
-                        DataMonth = file.DataMonth,
-                        DataYear = file.DataYear,
-                        DataYearMonth = file.DataYearMonth,
-                        IsReadyForBuild = false
-                    };
+                    var newBundle = DatabaseExtensions.CreateParaBundle(
+                        file.DataMonth,
+                        file.DataYear,
+                        file.DataYearMonth);
 
-                    newBundle.BuildFiles.Add(file);
-                    context.ParaBundles.Add(newBundle);
+                    newBundle.Files.Add(file);
+                    context.Bundles.Add(newBundle);
                     logger.LogInformation($"Created new bundle for {file.DataMonth}/{file.DataYear}");
                 }
                 else
                 {
                     // Add to existing bundle
-                    ParaBundle existingBundle = context.ParaBundles.Where(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear).FirstOrDefault();
+                    var existingBundle = context.ParaBundles().Where(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear).FirstOrDefault();
 
                     if (existingBundle != null)
                     {
-                        existingBundle.BuildFiles.Add(file);
+                        existingBundle.Files.Add(file);
                         logger.LogInformation($"Added file to existing bundle: {file.DataMonth}/{file.DataYear}");
                     }
                 }
@@ -246,7 +239,7 @@ public class ParascriptCrawler : BaseModule
     private async Task DownloadFiles(CancellationToken stoppingToken)
     {
         // Get files that need to be downloaded
-        List<ParaFile> offDisk = context.ParaFiles.Where(x => !x.OnDisk).ToList();
+        List<DataFile> offDisk = context.ParaFiles().Where(x => !x.OnDisk).ToList();
 
         // All files are already downloaded or task was cancelled
         if (offDisk.Count == 0 || stoppingToken.IsCancellationRequested)
@@ -258,7 +251,7 @@ public class ParascriptCrawler : BaseModule
         logger.LogInformation($"New files found for download: {offDisk.Count}");
 
         // Create directories and clean up existing files
-        foreach (ParaFile file in offDisk)
+        foreach (DataFile file in offDisk)
         {
             string dirPath = Path.Combine(Settings.AddressDataPath, file.DataYearMonth);
             Directory.CreateDirectory(dirPath);
@@ -324,16 +317,16 @@ public class ParascriptCrawler : BaseModule
                 await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
                 // Wait for all downloads to complete
-                bool downloadSuccess = await browserService.WaitForDownloadsToComplete(downloadPath, stoppingToken);
+                bool downloadSuccess = await browserService.WaitForDownloadsToComplete(downloadPath, fileExtension: ".CRDOWNLOAD", stoppingToken: stoppingToken);
 
                 if (downloadSuccess)
                 {
                     // Update file records
-                    foreach (ParaFile file in offDisk)
+                    foreach (DataFile file in offDisk)
                     {
                         file.OnDisk = true;
                         file.DateDownloaded = DateTime.Now;
-                        context.ParaFiles.Update(file);
+                        context.Files.Update(file);
                     }
 
                     await context.SaveChangesAsync(stoppingToken);
@@ -362,16 +355,16 @@ public class ParascriptCrawler : BaseModule
 
         try
         {
-            foreach (ParaBundle bundle in context.ParaBundles.Include("BuildFiles").ToList())
+            foreach (Bundle bundle in context.ParaBundles().Include(b => b.Files).ToList())
             {
                 // Skip bundles that aren't ready or don't have enough files
-                if (!bundle.BuildFiles.All(x => x.OnDisk) || bundle.BuildFiles.Count < 2)
+                if (!bundle.Files.All(x => x.OnDisk) || bundle.Files.Count < 2)
                 {
                     continue;
                 }
 
                 bundle.IsReadyForBuild = true;
-                bundle.FileCount = bundle.BuildFiles.Count;
+                bundle.FileCount = bundle.Files.Count;
 
                 if (!bundle.DownloadTimestamp.HasValue)
                 {

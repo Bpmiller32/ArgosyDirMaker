@@ -10,6 +10,7 @@ using Server.DataObjects;
 using Server.Crawlers;
 using Server.ServerMessages;
 using Server.Tester;
+using Server.DTOs;
 using Server;
 
 /* ---------------------------- Application setup --------------------------- */
@@ -282,6 +283,46 @@ app.MapPost($"{reverseProxySubdomain}/dirtester", (DirTester tester, TesterMessa
         default:
             return Results.BadRequest();
     }
+});
+
+// DTO example endpoint - returns all bundles as DTOs
+app.MapGet($"{reverseProxySubdomain}/bundles", async (DatabaseContext context) =>
+{
+    var bundles = new List<BundleDTO>();
+    
+    // Get USPS bundles
+    var uspsBundles = await context.UspsBundles().ToListAsync();
+    bundles.AddRange(uspsBundles.Select(BundleDTO.FromBundle));
+    
+    // Get Parascript bundles
+    var paraBundles = await context.ParaBundles().ToListAsync();
+    bundles.AddRange(paraBundles.Select(BundleDTO.FromBundle));
+    
+    // Get Royal Mail bundles
+    var royalBundles = await context.RoyalBundles().ToListAsync();
+    bundles.AddRange(royalBundles.Select(BundleDTO.FromBundle));
+    
+    return Results.Ok(bundles);
+});
+
+// DTO example endpoint - returns all files as DTOs
+app.MapGet($"{reverseProxySubdomain}/files", async (DatabaseContext context) =>
+{
+    var files = new List<FileDTO>();
+    
+    // Get USPS files
+    var uspsFiles = await context.UspsFiles().ToListAsync();
+    files.AddRange(uspsFiles.Select(FileDTO.FromFile));
+    
+    // Get Parascript files
+    var paraFiles = await context.ParaFiles().ToListAsync();
+    files.AddRange(paraFiles.Select(FileDTO.FromFile));
+    
+    // Get Royal Mail files
+    var royalFiles = await context.RoyalFiles().ToListAsync();
+    files.AddRange(royalFiles.Select(FileDTO.FromFile));
+    
+    return Results.Ok(files);
 });
 
 /* ---------------------------- Start application --------------------------- */

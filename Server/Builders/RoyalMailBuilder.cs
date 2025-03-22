@@ -359,7 +359,7 @@ public class RoyalMailBuilder : BaseModule
             return;
         }
 
-        RoyalBundle bundle = context.RoyalBundles.Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
+        Bundle bundle = context.RoyalBundles().Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
         bundle.IsBuildComplete = true;
         bundle.CompileTimestamp = DateTime.Now;
 

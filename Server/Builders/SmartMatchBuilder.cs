@@ -205,7 +205,7 @@ public class SmartMatchBuilder : BaseModule
         }
 
         // Will be null if Crawler never made a record for it, watch out if running standalone
-        UspsBundle bundle = context.UspsBundles.Where(x => dataYearMonth == x.DataYearMonth && $"Cycle-{cycle}" == x.Cycle).FirstOrDefault();
+        Bundle bundle = context.UspsBundles().Where(x => dataYearMonth == x.DataYearMonth && $"Cycle-{cycle}" == x.Cycle).FirstOrDefault();
         bundle.IsBuildComplete = true;
         bundle.CompileTimestamp = DateTime.Now;
 

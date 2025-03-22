@@ -6,6 +6,8 @@ namespace Server.Crawlers;
 public class FtpService
 {
     private readonly ILogger logger;
+
+    // Fields
     private const int MaxRetries = 3;
     private readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 

@@ -1,22 +1,28 @@
 using Microsoft.EntityFrameworkCore;
-using PuppeteerSharp;
 using Server.DataObjects;
 
 namespace Server.Crawlers;
 
+// Crawler for SmartMatch files that downloads and manages files from the USPS portal
 public class SmartMatchCrawler : BaseModule
 {
+    // DI
     private readonly ILogger<SmartMatchCrawler> logger;
     private readonly IConfiguration config;
     private readonly DatabaseContext context;
+    private readonly WebBrowserService browserService;
 
-    private readonly List<UspsFile> tempFiles = [];
+    // Fields
+    private readonly List<DataFile> tempFiles = [];
 
     public SmartMatchCrawler(ILogger<SmartMatchCrawler> logger, IConfiguration config, DatabaseContext context)
     {
         this.logger = logger;
         this.config = config;
         this.context = context;
+
+        // Initialize browser service
+        browserService = new WebBrowserService(logger);
 
         Settings.DirectoryName = "SmartMatch";
     }
@@ -34,20 +40,26 @@ public class SmartMatchCrawler : BaseModule
             logger.LogInformation("Starting Crawler");
             Status = ModuleStatus.InProgress;
 
+            // Validate settings from configuration
             Settings.Validate(config);
 
+            // Step 1: Get file metadata from FTP server
             Message = "Searching for available new files";
-            await PullFiles(stoppingToken);
+            await GetFileMetadata(stoppingToken);
 
-            Message = "Veifying files against database";
+            // Step 2: Check if file exists in database
+            Message = "Verifying files against database";
             await CheckFiles(stoppingToken);
 
+            // Step 3: Download new files
             Message = "Downloading new files";
             await DownloadFiles(stoppingToken);
 
+            // Step 4: Check if bundles are ready to build
             Message = "Checking if directories are ready to build";
             await CheckBuildReady(stoppingToken);
 
+            // Cleanup and reset status
             Message = "";
             logger.LogInformation("Finished Crawling");
             Status = ModuleStatus.Ready;
@@ -64,7 +76,8 @@ public class SmartMatchCrawler : BaseModule
         }
     }
 
-    private async Task PullFiles(CancellationToken stoppingToken)
+    // Gets file metadata from the SmartMatch portal
+    private async Task GetFileMetadata(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
@@ -74,225 +87,191 @@ public class SmartMatchCrawler : BaseModule
         // Clear tempfiles in case of leftovers from last pass
         tempFiles.Clear();
 
-        // Download local chromium binary to launch browser
-        BrowserFetcher fetcher = new();
-        await fetcher.DownloadAsync(BrowserFetcher.DefaultChromiumRevision);
-
-        // Set launchoptions, create browser instance
-        LaunchOptions options = new() { Headless = true };
-
-        // Create a browser instance, page instance, register stoppingToken to browser event
-        using Browser browser = (Browser)await Puppeteer.LaunchAsync(options);
-        using (stoppingToken.Register(async () => await browser.CloseAsync()))
-        using (Page page = (Page)await browser.NewPageAsync())
+        try
         {
-            // Navigate to download portal page
-            await page.GoToAsync("https://epf.usps.gov/");
+            // Initialize browser and navigate to portal
+            var (browser, page) = await browserService.InitializeBrowser(headless: true);
 
-            await page.WaitForSelectorAsync("#email");
-            await page.FocusAsync("#email");
-            await page.Keyboard.TypeAsync(Settings.UserName);
-            await page.FocusAsync("#password");
-            await page.Keyboard.TypeAsync(Settings.Password);
-
-            await page.ClickAsync("#login");
-
-            await page.WaitForSelectorAsync("#r1");
-            await page.ClickAsync("#r1");
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            await page.WaitForSelectorAsync("#r2");
-            await page.ClickAsync("#r2");
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-
-            // Has a 30s timeout, should throw exception if tbody/filelist is not found
-            await page.WaitForSelectorAsync("#tblFileList > tbody");
-
-            // Arrrived at download portal page, pull page HTML
-            HtmlAgilityPack.HtmlDocument doc = new();
-            doc.LoadHtml(page.GetContentAsync().Result);
-
-            // Format downloadables into list
-            foreach (HtmlAgilityPack.HtmlNode fileRow in doc.DocumentNode.SelectNodes("/html/body/div[2]/table/tbody/tr/td/div[3]/table/tbody/tr/td/div/table/tbody/tr"))
+            using (browser)
+            using (stoppingToken.Register(async () => await browser.CloseAsync()))
+            using (page)
             {
-                UspsFile file = new()
-                {
-                    FileName = fileRow.ChildNodes[5].InnerText.Trim(),
-                    UploadDate = DateTime.Parse(fileRow.ChildNodes[3].InnerText.Trim()),
-                    Size = fileRow.ChildNodes[6].InnerText.Trim(),
-                    OnDisk = true,
+                // Navigate to SmartMatch portal
+                await browserService.NavigateToSmartMatchPortal(page);
 
-                    ProductKey = fileRow.Attributes[0].Value.Trim().Substring(19, 5),
-                    FileId = fileRow.Attributes[1].Value.Trim().Substring(3, 7),
+                // Login to portal
+                await browserService.LoginToSmartMatchPortal(page, Settings.UserName, Settings.Password, stoppingToken);
 
-                    DataMonth = DateTime.Parse(fileRow.ChildNodes[3].InnerText.Trim()).Month,
-                    DataYear = DateTime.Parse(fileRow.ChildNodes[3].InnerText.Trim()).Year
-                };
+                // Extract file information from the page
+                var fileInfoList = await browserService.ExtractSmartMatchFileInfo(page);
 
-                if (file.DataMonth < 10)
-                {
-                    file.DataYearMonth = file.DataYear.ToString() + "0" + file.DataMonth.ToString();
-                }
-                else
-                {
-                    file.DataYearMonth = file.DataYear.ToString() + file.DataMonth.ToString();
-                }
+                // Add all files to the temp list
+                tempFiles.AddRange(fileInfoList);
 
-                if (fileRow.ChildNodes[1].InnerText.Trim() == "Downloaded")
-                {
-                    file.PreviouslyDownloaded = true;
-                }
-
-                // New logic needed because epf behavior change, cannot open G00424KL files because of access change + Cycle O added
-                string productDescription = fileRow.ChildNodes[2].InnerText.Trim();
-                if (productDescription.Contains("Cycle O"))
-                {
-                    file.Cycle = "Cycle-O";
-                }
-                else
-                {
-                    file.Cycle = "Cycle-N";
-                }
-
-                if (file.FileName.Contains(".zip", StringComparison.OrdinalIgnoreCase) || file.FileName.Contains(".pdf", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                tempFiles.Add(file);
+                logger.LogInformation($"Found {tempFiles.Count} files in SmartMatch portal");
             }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error getting file metadata from SmartMatch portal: {ex.Message}");
+            throw;
         }
     }
 
+    // Checks files against the database and updates records accordingly
     private async Task CheckFiles(CancellationToken stoppingToken)
     {
-        if (stoppingToken.IsCancellationRequested)
+        // Cancellation requested or GetFileMetadata failed
+        if (stoppingToken.IsCancellationRequested || tempFiles.Count == 0)
         {
             return;
         }
 
-        foreach (UspsFile file in tempFiles)
+        try
         {
-            // Check if file is unique against the db
-            bool fileInDb = context.UspsFiles.Any(x => file.FileId == x.FileId);
-
-            if (fileInDb)
+            foreach (DataFile file in tempFiles)
             {
-                continue;
-            }
+                // Check if file is unique against the db
+                bool fileInDb = context.UspsFiles().Any(x => file.FileId == x.FileId);
 
-            // Regardless of file check is unique, add to db
-            context.UspsFiles.Add(file);
-
-            // Check if file exists on the disk 
-            if (!File.Exists(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle, file.FileName)))
-            {
-                file.OnDisk = false;
-            }
-            logger.LogDebug($"Discovered and not on disk: {file.FileName} {file.DataMonth}/{file.DataYear} {file.Cycle}");
-
-            bool bundleExists = context.UspsBundles.Any(x => (file.DataMonth == x.DataMonth) && (file.DataYear == x.DataYear) && (file.Cycle == x.Cycle));
-
-            if (!bundleExists)
-            {
-                UspsBundle newBundle = new()
+                // File already in database
+                if (fileInDb)
                 {
-                    DataMonth = file.DataMonth,
-                    DataYear = file.DataYear,
-                    DataYearMonth = file.DataYearMonth,
-                    Cycle = file.Cycle,
-                    IsReadyForBuild = false
-                };
+                    continue;
+                }
 
-                newBundle.BuildFiles.Add(file);
-                context.UspsBundles.Add(newBundle);
+                // Add file to database
+                context.Files.Add(file);
+
+                // Check if file exists on the disk 
+                if (!File.Exists(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle, file.FileName)))
+                {
+                    file.OnDisk = false;
+                    logger.LogInformation($"Discovered and not on disk: {file.FileName} {file.DataMonth}/{file.DataYear} {file.Cycle}");
+                }
+
+                // Check if bundle exists for this month/year/cycle
+                bool bundleExists = context.UspsBundles().Any(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear && file.Cycle == x.Cycle);
+
+                if (!bundleExists)
+                {
+                    // Create new bundle
+                    var newBundle = DatabaseExtensions.CreateUspsBundle(
+                        file.DataMonth,
+                        file.DataYear,
+                        file.DataYearMonth,
+                        file.Cycle);
+
+                    newBundle.Files.Add(file);
+                    context.Bundles.Add(newBundle);
+                    logger.LogInformation($"Created new bundle for {file.DataMonth}/{file.DataYear} {file.Cycle}");
+                }
+                else
+                {
+                    // Add to existing bundle
+                    var existingBundle = context.UspsBundles().FirstOrDefault(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear && file.Cycle == x.Cycle);
+
+                    if (existingBundle != null)
+                    {
+                        existingBundle.Files.Add(file);
+                        logger.LogInformation($"Added file to existing bundle: {file.DataMonth}/{file.DataYear} {file.Cycle}");
+                    }
+                }
+
+                await context.SaveChangesAsync(stoppingToken);
             }
-            else
-            {
-                UspsBundle existingBundle = context.UspsBundles.FirstOrDefault(x => (file.DataMonth == x.DataMonth) && (file.DataYear == x.DataYear) && (file.Cycle == x.Cycle));
-
-                existingBundle.BuildFiles.Add(file);
-            }
-
-            await context.SaveChangesAsync(stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error checking files: {ex.Message}");
+            throw;
         }
     }
 
+    // Downloads files that are not on disk
     private async Task DownloadFiles(CancellationToken stoppingToken)
     {
-        List<UspsFile> offDisk = [.. context.UspsFiles.Where(x => !x.OnDisk)];
+        // Get files that need to be downloaded
+        List<DataFile> offDisk = [.. context.UspsFiles().Where(x => !x.OnDisk)];
 
         // If all files are downloaded, no need to kick open new browser
         if (offDisk.Count == 0 || stoppingToken.IsCancellationRequested)
         {
+            logger.LogInformation("No new files to download");
             return;
         }
 
         logger.LogInformation($"New files found for download: {offDisk.Count}");
 
-        foreach (UspsFile file in offDisk)
+        try
         {
-            // Ensure there is a folder to land in (this will punch through recursively btw, Downloads gets created as well if does not exist)
-            Directory.CreateDirectory(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle));
-            // Don't cleaup the folder, if some files appear on different days/times then they get overridden
-            // Utils.Cleanup(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle), stoppingToken);
-        }
-
-        // Download local chromium binary to launch browser
-        BrowserFetcher fetcher = new();
-        await fetcher.DownloadAsync(BrowserFetcher.DefaultChromiumRevision);
-
-        // Set launchoptions, extras
-        LaunchOptions options = new() { Headless = true };
-        // PuppeteerExtra extra = new();
-        // extra.Use(new StealthPlugin());
-
-        // Create a browser instance, page instance
-        using Browser browser = (Browser)await Puppeteer.LaunchAsync(options);
-        using (stoppingToken.Register(async () => await browser.CloseAsync()))
-        using (Page page = (Page)await browser.NewPageAsync())
-        {
-            // Navigate to download portal page
-            await page.GoToAsync("https://epf.usps.gov/");
-
-            await page.WaitForSelectorAsync("#email");
-            await page.FocusAsync("#email");
-            await page.Keyboard.TypeAsync(Settings.UserName);
-            await page.FocusAsync("#password");
-            await page.Keyboard.TypeAsync(Settings.Password);
-
-            await page.ClickAsync("#login");
-
-            await page.WaitForSelectorAsync("#r1");
-            await page.ClickAsync("#r1");
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            await page.WaitForSelectorAsync("#r2");
-            await page.ClickAsync("#r2");
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-
-            await page.WaitForSelectorAsync("#tblFileList > tbody");
-
-            // Changed behavior, start download and wait for indivdual file to download. USPS website corrupts downloads if you do them all at once sometimes
-            foreach (UspsFile file in offDisk)
+            // Create directories for each file
+            foreach (DataFile file in offDisk)
             {
-                string path = Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle);
-                await page.Client.SendAsync("Page.setDownloadBehavior", new { behavior = "allow", downloadPath = path });
+                // Ensure there is a folder to land in
+                Directory.CreateDirectory(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle));
+                // Don't cleanup the folder, if some files appear on different days/times then they get overridden
+                // Utils.Cleanup(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle), stoppingToken);
+            }
 
-                await page.EvaluateExpressionAsync($"document.querySelector('#td_{file.FileId}').childNodes[0].click()");
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            // Initialize browser for downloading
+            var (browser, page) = await browserService.InitializeBrowser(headless: true, downloadPath: Path.Combine(Settings.AddressDataPath, offDisk[0].DataYearMonth, offDisk[0].Cycle));
 
-                logger.LogInformation($"Currently downloading: {file.FileName} {file.DataMonth}/{file.DataYear} {file.Cycle}");
-                await WaitForDownload(file, stoppingToken);
+            using (browser)
+            using (stoppingToken.Register(async () => await browser.CloseAsync()))
+            using (page)
+            {
+                // Navigate to SmartMatch portal
+                await browserService.NavigateToSmartMatchPortal(page);
 
-                if (file.FileName.Contains("zip4natl") || file.FileName.Contains("zipmovenatl"))
+                // Login to portal
+                await browserService.LoginToSmartMatchPortal(page, Settings.UserName, Settings.Password, stoppingToken);
+
+                // Download each file individually, USPS website corrupts downloads if you do them all at once sometimes
+                foreach (DataFile file in offDisk)
                 {
-                    // Since Zip data is the same for N and O, make sure in both folders
-                    Directory.CreateDirectory(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, "Cycle-O"));
-                    File.Copy(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, "Cycle-N", file.FileName), Path.Combine(Settings.AddressDataPath, file.DataYearMonth, "Cycle-O", file.FileName), true);
+                    string downloadPath = Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle);
+                    string filePath = Path.Combine(downloadPath, file.FileName);
+
+                    // Download the file
+                    await browserService.DownloadSmartMatchFile(page, file.FileId, downloadPath, stoppingToken);
+
+                    logger.LogInformation($"Currently downloading: {file.FileName} {file.DataMonth}/{file.DataYear} {file.Cycle}");
+
+                    // Wait for download to complete
+                    bool downloadSuccess = await browserService.WaitForFileDownload(filePath, stoppingToken: stoppingToken);
+
+                    if (downloadSuccess)
+                    {
+                        // Update file record
+                        file.OnDisk = true;
+                        file.DateDownloaded = DateTime.Now;
+                        context.Files.Update(file);
+                        await context.SaveChangesAsync(stoppingToken);
+
+                        // Handle special case for zip files
+                        if (file.FileName.Contains("zip4natl") || file.FileName.Contains("zipmovenatl"))
+                        {
+                            // Since Zip data is the same for N and O, make sure in both folders
+                            Directory.CreateDirectory(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, "Cycle-O"));
+                            File.Copy(Path.Combine(Settings.AddressDataPath, file.DataYearMonth, "Cycle-N", file.FileName), Path.Combine(Settings.AddressDataPath, file.DataYearMonth, "Cycle-O", file.FileName), true);
+                        }
+                    }
+                    else
+                    {
+                        logger.LogWarning($"Download failed for file: {file.FileName}");
+                    }
                 }
             }
         }
+        catch (Exception ex)
+        {
+            logger.LogError($"Error downloading files: {ex.Message}");
+            throw;
+        }
     }
 
+    // Checks if bundles are ready to build
     private async Task CheckBuildReady(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
@@ -300,58 +279,53 @@ public class SmartMatchCrawler : BaseModule
             return;
         }
 
-        foreach (UspsBundle bundle in context.UspsBundles.Include("BuildFiles").ToList())
+        try
         {
-            if (bundle.Cycle == "Cycle-N" && (!bundle.BuildFiles.All(x => x.OnDisk) || bundle.BuildFiles.Count < 6))
+            // Get all bundles with their associated files. Skip bundles that aren't ready or don't have enough files
+            foreach (Bundle bundle in context.UspsBundles().Include(b => b.Files).ToList())
             {
-                continue;
-            }
-            if (bundle.Cycle == "Cycle-O" && (!bundle.BuildFiles.All(x => x.OnDisk) || bundle.BuildFiles.Count < 4))
-            {
-                continue;
+                // Cycle-N requires at least 6 files
+                if (bundle.Cycle == "Cycle-N" && (!bundle.Files.All(x => x.OnDisk) || bundle.Files.Count < 6))
+                {
+                    continue;
+                }
+
+                // Cycle-O requires at least 4 files
+                if (bundle.Cycle == "Cycle-O" && (!bundle.Files.All(x => x.OnDisk) || bundle.Files.Count < 4))
+                {
+                    continue;
+                }
+
+                // Special check for Cycle-O, it needs zip files from Cycle-N
+                if (bundle.Cycle == "Cycle-O")
+                {
+                    var cycleNEquivalent = context.UspsBundles().Where(x => x.DataYearMonth == bundle.DataYearMonth && x.Cycle == "Cycle-N").Include(b => b.Files).FirstOrDefault();
+
+                    if (cycleNEquivalent == null || !cycleNEquivalent.Files.Any(x => x.FileName == "zip4natl.tar") || !cycleNEquivalent.Files.Any(x => x.FileName == "zipmovenatl.tar"))
+                    {
+                        continue;
+                    }
+                }
+
+                // Mark bundle as ready to build
+                bundle.IsReadyForBuild = true;
+                bundle.FileCount = bundle.Files.Count;
+
+                if (!bundle.DownloadTimestamp.HasValue)
+                {
+                    bundle.DownloadTimestamp = DateTime.Now;
+                }
+
+                logger.LogInformation($"Bundle ready to build: {bundle.DataMonth}/{bundle.DataYear} {bundle.Cycle}");
             }
 
-            UspsBundle cycleNEquivalent = context.UspsBundles.Where(x => x.DataYearMonth == bundle.DataYearMonth && x.Cycle == "Cycle-N").Include("BuildFiles").FirstOrDefault();
-            if (bundle.Cycle == "Cycle-O" && !cycleNEquivalent.BuildFiles.Any(x => x.FileName == "zip4natl.tar") && !cycleNEquivalent.BuildFiles.Any(x => x.FileName == "zipmovenatl.tar"))
-            {
-                continue;
-            }
-
-
-            bundle.IsReadyForBuild = true;
-            bundle.FileCount = bundle.BuildFiles.Count;
-            if (!bundle.DownloadTimestamp.HasValue)
-            {
-                bundle.DownloadTimestamp = DateTime.Now;
-            }
-
-            logger.LogInformation($"Bundle ready to build: {bundle.DataMonth}/{bundle.DataYear} {bundle.Cycle}");
             await context.SaveChangesAsync(stoppingToken);
+            SendDbUpdate = true;
         }
-
-        SendDbUpdate = true;
-    }
-
-    private async Task WaitForDownload(UspsFile file, CancellationToken stoppingToken)
-    {
-        if (stoppingToken.IsCancellationRequested)
+        catch (Exception ex)
         {
-            logger.LogInformation("Download in progress was stopped due to cancellation");
-            return;
+            logger.LogError($"Error checking build readiness: {ex.Message}");
+            throw;
         }
-
-        string path = Path.Combine(Settings.AddressDataPath, file.DataYearMonth, file.Cycle);
-        if (!File.Exists(Path.Combine(path, file.FileName + ".CRDOWNLOAD")))
-        {
-            logger.LogDebug("Finished downloading");
-            file.OnDisk = true;
-            file.DateDownloaded = DateTime.Now;
-            context.UspsFiles.Update(file);
-            await context.SaveChangesAsync(stoppingToken);
-            return;
-        }
-
-        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-        await WaitForDownload(file, stoppingToken);
     }
 }

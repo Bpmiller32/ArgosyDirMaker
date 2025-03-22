@@ -12,8 +12,8 @@ public class RoyalMailCrawler : BaseModule
     private readonly DatabaseContext context;
     private readonly FtpService ftpService;
 
-    // Constants
-    private readonly RoyalFile tempFile = new();
+    // Fields
+    private DataFile tempFile = new();
     private const string RoyalMailFtpUrl = "ftp://pafdownload.afd.co.uk/SetupRM.exe";
 
     public RoyalMailCrawler(ILogger<RoyalMailCrawler> logger, IConfiguration config, DatabaseContext context)
@@ -90,6 +90,9 @@ public class RoyalMailCrawler : BaseModule
             return;
         }
 
+        // Clear tempfiles in case of leftovers from last pass
+        tempFile = new();
+
         try
         {
             // Get the last modified date of the file
@@ -132,7 +135,7 @@ public class RoyalMailCrawler : BaseModule
         try
         {
             // Check if file is unique against the database
-            bool fileInDb = context.RoyalFiles.Any(x => tempFile.FileName == x.FileName && tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear);
+            bool fileInDb = context.RoyalFiles().Any(x => tempFile.FileName == x.FileName && tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear);
 
             if (fileInDb)
             {
@@ -140,45 +143,50 @@ public class RoyalMailCrawler : BaseModule
                 return;
             }
 
+            // Create a new DataFile with RoyalMail provider
+            var newFile = DatabaseExtensions.CreateRoyalFile(
+                tempFile.FileName,
+                tempFile.DataMonth,
+                tempFile.DataYear,
+                tempFile.DataYearMonth,
+                tempFile.DataDay);
+
             // Add new file to database
-            context.RoyalFiles.Add(tempFile);
+            context.Files.Add(newFile);
 
             // Check if the file exists on disk
             string filePath = Path.Combine(Settings.AddressDataPath, tempFile.DataYearMonth, tempFile.FileName);
-            tempFile.OnDisk = File.Exists(filePath);
+            newFile.OnDisk = File.Exists(filePath);
 
-            if (!tempFile.OnDisk)
+            if (!newFile.OnDisk)
             {
-                logger.LogInformation($"Discovered new file not on disk: {tempFile.FileName} {tempFile.DataMonth}/{tempFile.DataYear}");
+                logger.LogInformation($"Discovered new file not on disk: {newFile.FileName} {newFile.DataMonth}/{newFile.DataYear}");
             }
 
             // Check if a bundle exists for this month/year
-            bool bundleExists = context.RoyalBundles.Any(x => tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear);
+            bool bundleExists = context.RoyalBundles().Any(x => tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear);
 
             if (!bundleExists)
             {
                 // Create a new bundle
-                var newBundle = new RoyalBundle
-                {
-                    DataMonth = tempFile.DataMonth,
-                    DataYear = tempFile.DataYear,
-                    DataYearMonth = tempFile.DataYearMonth,
-                    IsReadyForBuild = false
-                };
+                var newBundle = DatabaseExtensions.CreateRoyalBundle(
+                    tempFile.DataMonth,
+                    tempFile.DataYear,
+                    tempFile.DataYearMonth);
 
-                newBundle.BuildFiles.Add(tempFile);
-                context.RoyalBundles.Add(newBundle);
+                newBundle.Files.Add(newFile);
+                context.Bundles.Add(newBundle);
 
                 logger.LogInformation($"Created new bundle for {tempFile.DataMonth}/{tempFile.DataYear}");
             }
             else
             {
                 // Add file to existing bundle
-                var existingBundle = context.RoyalBundles.Where(x => tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear).FirstOrDefault();
+                var existingBundle = context.RoyalBundles().Where(x => tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear).FirstOrDefault();
 
                 if (existingBundle != null)
                 {
-                    existingBundle.BuildFiles.Add(tempFile);
+                    existingBundle.Files.Add(newFile);
                     logger.LogInformation($"Added file to existing bundle for {tempFile.DataMonth}/{tempFile.DataYear}");
                 }
             }
@@ -197,7 +205,7 @@ public class RoyalMailCrawler : BaseModule
     private async Task DownloadFiles(CancellationToken stoppingToken)
     {
         // Get files that are not on disk
-        List<RoyalFile> offDisk = context.RoyalFiles.Where(x => !x.OnDisk).ToList();
+        List<DataFile> offDisk = context.RoyalFiles().Where(x => !x.OnDisk).ToList();
 
         // Cancellation requested or no files to download
         if (offDisk.Count == 0 || stoppingToken.IsCancellationRequested)
@@ -235,7 +243,7 @@ public class RoyalMailCrawler : BaseModule
                 file.DateDownloaded = DateTime.Now;
 
                 // Update database
-                context.RoyalFiles.Update(file);
+                context.Files.Update(file);
                 await context.SaveChangesAsync(stoppingToken);
 
                 logger.LogInformation($"Successfully downloaded {file.FileName} ({file.Size})");
@@ -259,24 +267,24 @@ public class RoyalMailCrawler : BaseModule
         try
         {
             // Get all bundles with their files
-            var bundles = context.RoyalBundles.Include(b => b.BuildFiles).ToList();
+            var bundles = context.RoyalBundles().Include(b => b.Files).ToList();
 
             foreach (var bundle in bundles)
             {
                 // Skip bundles that are already marked as ready or have no files
-                if (bundle.IsReadyForBuild || bundle.BuildFiles.Count < 1)
+                if (bundle.IsReadyForBuild || bundle.Files.Count < 1)
                 {
                     continue;
                 }
 
                 // Check if all files in the bundle are on disk
-                bool allFilesOnDisk = bundle.BuildFiles.All(x => x.OnDisk);
+                bool allFilesOnDisk = bundle.Files.All(x => x.OnDisk);
 
                 if (allFilesOnDisk)
                 {
                     // Mark bundle as ready to build
                     bundle.IsReadyForBuild = true;
-                    bundle.FileCount = bundle.BuildFiles.Count;
+                    bundle.FileCount = bundle.Files.Count;
 
                     // Set download timestamp if not already set
                     if (!bundle.DownloadTimestamp.HasValue)

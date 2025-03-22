@@ -3,6 +3,7 @@ using Server.Builders;
 using Server.DataObjects;
 using Server.Crawlers;
 using Server.Tester;
+using Server.DTOs;
 using Microsoft.EntityFrameworkCore;
 
 namespace Server.ServerMessages;
@@ -137,21 +138,21 @@ public class StatusReporter
         switch (directoryType)
         {
             case "SmartMatch":
-                await context.UspsBundles
+                await context.UspsBundles()
                     .Where(x => x.IsReadyForBuild && x.Cycle == "Cycle-O")
                     .ForEachAsync(bundle => AppendBundleData(readyToBuild, bundle))
                     .ConfigureAwait(false);
                 break;
 
             case "Parascript":
-                await context.ParaBundles
+                await context.ParaBundles()
                     .Where(x => x.IsReadyForBuild)
                     .ForEachAsync(bundle => AppendBundleData(readyToBuild, bundle))
                     .ConfigureAwait(false);
                 break;
 
             case "RoyalMail":
-                await context.RoyalBundles
+                await context.RoyalBundles()
                     .Where(x => x.IsReadyForBuild)
                     .ForEachAsync(bundle => AppendBundleData(readyToBuild, bundle))
                     .ConfigureAwait(false);
@@ -160,9 +161,12 @@ public class StatusReporter
     }
 
     // Appends bundle data to the ready-to-build reporter
-    private void AppendBundleData(ReadyToBuildReporter reporter, BaseBundle bundle)
+    private void AppendBundleData(ReadyToBuildReporter reporter, Bundle bundle)
     {
-        reporter.DataYearMonth += $"{bundle.DataYearMonth}|";
+        // Convert to DTO for client communication
+        var bundleDto = BundleDTO.FromBundle(bundle);
+        
+        reporter.DataYearMonth += $"{bundleDto.DataYearMonth}|";
         reporter.FileCount += $"{bundle.FileCount}|";
         
         // Format the DownloadTimestamp into date and time strings
@@ -215,26 +219,35 @@ public class StatusReporter
         switch (directoryType)
         {
             case "SmartMatch":
-                await context.UspsBundles
+                await context.UspsBundles()
                     .Where(x => x.IsBuildComplete && x.Cycle == "Cycle-O")
                     .ForEachAsync(bundle =>
-                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|")
+                    {
+                        var bundleDto = BundleDTO.FromBundle(bundle);
+                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundleDto.DataYearMonth}|";
+                    })
                     .ConfigureAwait(false);
                 break;
 
             case "Parascript":
-                await context.ParaBundles
+                await context.ParaBundles()
                     .Where(x => x.IsBuildComplete)
                     .ForEachAsync(bundle =>
-                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|")
+                    {
+                        var bundleDto = BundleDTO.FromBundle(bundle);
+                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundleDto.DataYearMonth}|";
+                    })
                     .ConfigureAwait(false);
                 break;
 
             case "RoyalMail":
-                await context.RoyalBundles
+                await context.RoyalBundles()
                     .Where(x => x.IsBuildComplete)
                     .ForEachAsync(bundle =>
-                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundle.DataYearMonth}|")
+                    {
+                        var bundleDto = BundleDTO.FromBundle(bundle);
+                        jsonObject[directoryType].Builder.BuildComplete.DataYearMonth += $"{bundleDto.DataYearMonth}|";
+                    })
                     .ConfigureAwait(false);
                 break;
         }
