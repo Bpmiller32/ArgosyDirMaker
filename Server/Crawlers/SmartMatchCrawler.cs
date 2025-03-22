@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PuppeteerSharp;
 using Server.DataObjects;
 
 namespace Server.Crawlers;
@@ -90,7 +91,7 @@ public class SmartMatchCrawler : BaseModule
         try
         {
             // Initialize browser and navigate to portal
-            var (browser, page) = await browserService.InitializeBrowser(headless: true);
+            (Browser browser, Page page) = await browserService.InitializeBrowser(headless: true);
 
             using (browser)
             using (stoppingToken.Register(async () => await browser.CloseAsync()))
@@ -103,7 +104,7 @@ public class SmartMatchCrawler : BaseModule
                 await browserService.LoginToSmartMatchPortal(page, Settings.UserName, Settings.Password, stoppingToken);
 
                 // Extract file information from the page
-                var fileInfoList = await browserService.ExtractSmartMatchFileInfo(page);
+                List<DataFile> fileInfoList = await browserService.ExtractSmartMatchFileInfo(page);
 
                 // Add all files to the temp list
                 tempFiles.AddRange(fileInfoList);
@@ -156,7 +157,7 @@ public class SmartMatchCrawler : BaseModule
                 if (!bundleExists)
                 {
                     // Create new bundle
-                    var newBundle = DatabaseExtensions.CreateUspsBundle(
+                    Bundle newBundle = DatabaseExtensions.CreateUspsBundle(
                         file.DataMonth,
                         file.DataYear,
                         file.DataYearMonth,
@@ -169,7 +170,7 @@ public class SmartMatchCrawler : BaseModule
                 else
                 {
                     // Add to existing bundle
-                    var existingBundle = context.UspsBundles().FirstOrDefault(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear && file.Cycle == x.Cycle);
+                    Bundle existingBundle = context.UspsBundles().FirstOrDefault(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear && file.Cycle == x.Cycle);
 
                     if (existingBundle != null)
                     {
@@ -215,7 +216,7 @@ public class SmartMatchCrawler : BaseModule
             }
 
             // Initialize browser for downloading
-            var (browser, page) = await browserService.InitializeBrowser(headless: true, downloadPath: Path.Combine(Settings.AddressDataPath, offDisk[0].DataYearMonth, offDisk[0].Cycle));
+            (Browser browser, Page page) = await browserService.InitializeBrowser(headless: true, downloadPath: Path.Combine(Settings.AddressDataPath, offDisk[0].DataYearMonth, offDisk[0].Cycle));
 
             using (browser)
             using (stoppingToken.Register(async () => await browser.CloseAsync()))
@@ -299,7 +300,7 @@ public class SmartMatchCrawler : BaseModule
                 // Special check for Cycle-O, it needs zip files from Cycle-N
                 if (bundle.Cycle == "Cycle-O")
                 {
-                    var cycleNEquivalent = context.UspsBundles().Where(x => x.DataYearMonth == bundle.DataYearMonth && x.Cycle == "Cycle-N").Include(b => b.Files).FirstOrDefault();
+                    Bundle cycleNEquivalent = context.UspsBundles().Where(x => x.DataYearMonth == bundle.DataYearMonth && x.Cycle == "Cycle-N").Include(b => b.Files).FirstOrDefault();
 
                     if (cycleNEquivalent == null || !cycleNEquivalent.Files.Any(x => x.FileName == "zip4natl.tar") || !cycleNEquivalent.Files.Any(x => x.FileName == "zipmovenatl.tar"))
                     {

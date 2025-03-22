@@ -1,7 +1,7 @@
 using System;
 using Server.DataObjects;
 
-namespace Server.DTOs;
+namespace Server.DataObjects;
 
 public class BundleDTO
 {

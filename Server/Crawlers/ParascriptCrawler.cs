@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PuppeteerSharp;
 using Server.DataObjects;
 
 namespace Server.Crawlers;
@@ -90,7 +91,7 @@ public class ParascriptCrawler : BaseModule
         tempFiles.Clear();
 
         // Initialize browser and navigate to portal
-        var (browser, page) = await browserService.InitializeBrowser(headless: true, downloadPath: Path.Combine(Settings.AddressDataPath, "Temp"));
+        (Browser browser, Page page) = await browserService.InitializeBrowser(headless: true, downloadPath: Path.Combine(Settings.AddressDataPath, "Temp"));
 
         using (browser)
         using (stoppingToken.Register(async () => await browser.CloseAsync()))
@@ -102,7 +103,7 @@ public class ParascriptCrawler : BaseModule
                 await browserService.NavigateToParascriptPortal(page);
 
                 // Wait for download button to appear
-                var downloadButton = await browserService.WaitForTextElement(page, "Download", maxAttempts: 10, stabilityDelay: 1500, stoppingToken);
+                IElementHandle downloadButton = await browserService.WaitForTextElement(page, "Download", maxAttempts: 10, stabilityDelay: 1500, stoppingToken);
 
                 if (downloadButton == null)
                 {
@@ -111,7 +112,7 @@ public class ParascriptCrawler : BaseModule
                 }
 
                 // Wait for and click the ads button
-                var adsButton = await browserService.WaitForTextElement(page, ADS_FILE_NAME, maxAttempts: 8, stabilityDelay: 1000, stoppingToken);
+                IElementHandle adsButton = await browserService.WaitForTextElement(page, ADS_FILE_NAME, maxAttempts: 8, stabilityDelay: 1000, stoppingToken);
 
                 if (adsButton != null)
                 {
@@ -131,14 +132,14 @@ public class ParascriptCrawler : BaseModule
                 await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
 
                 // Extract file information
-                var (month, year) = await browserService.ExtractParascriptFileInfo(page);
+                (string month, string year) = await browserService.ExtractParascriptFileInfo(page);
 
                 // Create file records
                 string fullYear = string.Concat("20", year);
                 string yearMonth = string.Concat(fullYear, month);
 
                 // Create ADS file record
-                var adsFile = DatabaseExtensions.CreateParaFile(
+                DataFile adsFile = DatabaseExtensions.CreateParaFile(
                     ADS_FILE_NAME,
                     int.Parse(month),
                     int.Parse(fullYear),
@@ -147,7 +148,7 @@ public class ParascriptCrawler : BaseModule
                 tempFiles.Add(adsFile);
 
                 // Create DPV file record
-                var dpvFile = DatabaseExtensions.CreateParaFile(
+                DataFile dpvFile = DatabaseExtensions.CreateParaFile(
                     DPV_FILE_NAME,
                     int.Parse(month),
                     int.Parse(fullYear),
@@ -204,7 +205,7 @@ public class ParascriptCrawler : BaseModule
                 if (!bundleExists)
                 {
                     // Create new bundle
-                    var newBundle = DatabaseExtensions.CreateParaBundle(
+                    Bundle newBundle = DatabaseExtensions.CreateParaBundle(
                         file.DataMonth,
                         file.DataYear,
                         file.DataYearMonth);
@@ -216,7 +217,7 @@ public class ParascriptCrawler : BaseModule
                 else
                 {
                     // Add to existing bundle
-                    var existingBundle = context.ParaBundles().Where(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear).FirstOrDefault();
+                    Bundle existingBundle = context.ParaBundles().Where(x => file.DataMonth == x.DataMonth && file.DataYear == x.DataYear).FirstOrDefault();
 
                     if (existingBundle != null)
                     {
@@ -260,7 +261,7 @@ public class ParascriptCrawler : BaseModule
 
         // Initialize browser for downloading
         string downloadPath = Path.Combine(Settings.AddressDataPath, offDisk[0].DataYearMonth);
-        var (browser, page) = await browserService.InitializeBrowser(headless: true, downloadPath: downloadPath);
+        (Browser browser, Page page) = await browserService.InitializeBrowser(headless: true, downloadPath: downloadPath);
 
         using (browser)
         using (stoppingToken.Register(async () => await browser.CloseAsync()))
@@ -272,7 +273,7 @@ public class ParascriptCrawler : BaseModule
                 await browserService.NavigateToParascriptPortal(page);
 
                 // Wait for download button
-                var downloadButton = await browserService.WaitForTextElement(page, "Download", maxAttempts: 15, stabilityDelay: 1500, stoppingToken);
+                IElementHandle downloadButton = await browserService.WaitForTextElement(page, "Download", maxAttempts: 15, stabilityDelay: 1500, stoppingToken);
 
                 if (downloadButton == null)
                 {
@@ -281,7 +282,7 @@ public class ParascriptCrawler : BaseModule
                 }
 
                 // Select all files
-                var selectAllCheckbox = await browserService.WaitForTextElement(page, "Select All", maxAttempts: 8, stabilityDelay: 1000, stoppingToken);
+                IElementHandle selectAllCheckbox = await browserService.WaitForTextElement(page, "Select All", maxAttempts: 8, stabilityDelay: 1000, stoppingToken);
 
                 if (selectAllCheckbox != null)
                 {

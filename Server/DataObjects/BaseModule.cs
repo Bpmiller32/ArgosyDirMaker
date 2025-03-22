@@ -1,3 +1,5 @@
+using Server.ModuleControl;
+
 namespace Server.DataObjects;
 
 // Base class for all module types that provides common functionality for status tracking and configuration

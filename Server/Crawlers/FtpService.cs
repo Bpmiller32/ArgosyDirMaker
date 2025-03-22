@@ -19,21 +19,21 @@ public class FtpService
     // Gets the last modified date of a file on an FTP server
     public async Task<DateTime> GetFileLastModifiedDate(string url, string username, string password, CancellationToken cancellationToken)
     {
-        using var handler = new HttpClientHandler
+        using HttpClientHandler handler = new HttpClientHandler
         {
             Credentials = new NetworkCredential(username, password)
         };
-        using var client = new HttpClient(handler);
+        using HttpClient client = new HttpClient(handler);
 
         // Create a custom request to get the file's timestamp
-        var request = new HttpRequestMessage(HttpMethod.Head, url);
+        HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Head, url);
 
         // Implement retry logic for transient failures
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             try
             {
-                var response = await client.SendAsync(request, cancellationToken);
+                HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
                 response.EnsureSuccessStatusCode();
 
                 if (response.Content.Headers.LastModified.HasValue)
@@ -61,11 +61,11 @@ public class FtpService
     {
         logger.LogInformation($"Downloading file from {url} to {destinationPath}");
 
-        using var handler = new HttpClientHandler
+        using HttpClientHandler handler = new HttpClientHandler
         {
             Credentials = new NetworkCredential(username, password)
         };
-        using var client = new HttpClient(handler);
+        using HttpClient client = new HttpClient(handler);
 
         // Implement retry logic for transient failures
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
@@ -73,7 +73,7 @@ public class FtpService
             try
             {
                 // Download as stream to avoid loading entire file into memory
-                using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                using HttpResponseMessage response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 response.EnsureSuccessStatusCode();
 
                 // Get file size from headers if available
@@ -83,7 +83,7 @@ public class FtpService
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
 
                 // Stream directly to file
-                using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
+                using FileStream fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
                 await response.Content.CopyToAsync(fileStream, cancellationToken);
 
                 // If we couldn't get the file size from headers, get it from the file
@@ -109,7 +109,7 @@ public class FtpService
     // Formats a file size in bytes to a human-readable string (KB, MB, GB)
     public static string FormatFileSize(long bytes)
     {
-        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
         int counter = 0;
         decimal number = bytes;
 

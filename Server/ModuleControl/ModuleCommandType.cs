@@ -1,4 +1,4 @@
-namespace Server.ServerMessages;
+namespace Server.ModuleControl;
 
 // Defines the command types that can be sent to modules
 public enum ModuleCommandType

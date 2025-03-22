@@ -144,7 +144,7 @@ public class RoyalMailCrawler : BaseModule
             }
 
             // Create a new DataFile with RoyalMail provider
-            var newFile = DatabaseExtensions.CreateRoyalFile(
+            DataFile newFile = DatabaseExtensions.CreateRoyalFile(
                 tempFile.FileName,
                 tempFile.DataMonth,
                 tempFile.DataYear,
@@ -169,7 +169,7 @@ public class RoyalMailCrawler : BaseModule
             if (!bundleExists)
             {
                 // Create a new bundle
-                var newBundle = DatabaseExtensions.CreateRoyalBundle(
+                Bundle newBundle = DatabaseExtensions.CreateRoyalBundle(
                     tempFile.DataMonth,
                     tempFile.DataYear,
                     tempFile.DataYearMonth);
@@ -182,7 +182,7 @@ public class RoyalMailCrawler : BaseModule
             else
             {
                 // Add file to existing bundle
-                var existingBundle = context.RoyalBundles().Where(x => tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear).FirstOrDefault();
+                Bundle existingBundle = context.RoyalBundles().Where(x => tempFile.DataMonth == x.DataMonth && tempFile.DataYear == x.DataYear).FirstOrDefault();
 
                 if (existingBundle != null)
                 {
@@ -267,7 +267,7 @@ public class RoyalMailCrawler : BaseModule
         try
         {
             // Get all bundles with their files
-            var bundles = context.RoyalBundles().Include(b => b.Files).ToList();
+            List<Bundle> bundles = context.RoyalBundles().Include(b => b.Files).ToList();
 
             foreach (var bundle in bundles)
             {

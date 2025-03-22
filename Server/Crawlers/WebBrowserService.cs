@@ -67,7 +67,7 @@ public class WebBrowserService
 
             string xpathExpression = $"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{text.ToLower()}')]";
             await page.WaitForXPathAsync(xpathExpression, new WaitForSelectorOptions { Timeout = timeout });
-            var elements = await page.XPathAsync(xpathExpression);
+            IElementHandle[] elements = await page.XPathAsync(xpathExpression);
 
             if (elements.Length > 0)
             {
@@ -91,7 +91,7 @@ public class WebBrowserService
                 }})
             ";
 
-            var element = await page.EvaluateFunctionHandleAsync(jsSelector);
+            IJSHandle element = await page.EvaluateFunctionHandleAsync(jsSelector);
             if (element != null)
             {
                 // Verify it's a valid element
@@ -116,7 +116,7 @@ public class WebBrowserService
                     {
                         // Create a more specific XPath with the exact text
                         string specificXPath = $"//*[contains(text(), '{elementText.Replace("'", "\\'").Substring(0, Math.Min(elementText.Length, 20))}')]";
-                        var specificElements = await page.XPathAsync(specificXPath);
+                        IElementHandle[] specificElements = await page.XPathAsync(specificXPath);
                         if (specificElements.Length > 0)
                         {
                             return specificElements[0];
@@ -143,7 +143,7 @@ public class WebBrowserService
             try
             {
                 // Find the element
-                var element = await FindElementByText(page, text, 10000, stoppingToken);
+                IElementHandle element = await FindElementByText(page, text, 10000, stoppingToken);
 
                 if (element == null)
                 {
@@ -282,7 +282,7 @@ public class WebBrowserService
 
         if (node == null)
         {
-            var allTextNodes = doc.DocumentNode.SelectNodes($"//text()[contains(., '{pattern}')]");
+            HtmlNodeCollection allTextNodes = doc.DocumentNode.SelectNodes($"//text()[contains(., '{pattern}')]");
 
             if (allTextNodes != null && allTextNodes.Count > 0)
             {
@@ -292,7 +292,7 @@ public class WebBrowserService
 
         if (node == null)
         {
-            var allNodes = doc.DocumentNode.SelectNodes("//*");
+            HtmlNodeCollection allNodes = doc.DocumentNode.SelectNodes("//*");
             if (allNodes != null)
             {
                 foreach (var n in allNodes)
@@ -313,7 +313,7 @@ public class WebBrowserService
 
         // Extract the year/month information using regex
         string nodeText = node.InnerText;
-        var match = Regex.Match(nodeText, $@"{pattern}(\d{{2}})(\d{{2}})");
+        Match match = Regex.Match(nodeText, $@"{pattern}(\d{{2}})(\d{{2}})");
 
         if (!match.Success)
         {
@@ -370,7 +370,7 @@ public class WebBrowserService
     public async Task<List<DataFile>> ExtractSmartMatchFileInfo(Page page)
     {
         // Create a list to hold the file information
-        var fileInfoList = new List<DataFile>();
+        List<DataFile> fileInfoList = new List<DataFile>();
 
         try
         {
@@ -379,7 +379,7 @@ public class WebBrowserService
             doc.LoadHtml(await page.GetContentAsync());
 
             // Extract file rows
-            var fileRows = doc.DocumentNode.SelectNodes("/html/body/div[2]/table/tbody/tr/td/div[3]/table/tbody/tr/td/div/table/tbody/tr");
+            HtmlNodeCollection fileRows = doc.DocumentNode.SelectNodes("/html/body/div[2]/table/tbody/tr/td/div[3]/table/tbody/tr/td/div/table/tbody/tr");
 
             if (fileRows == null || fileRows.Count == 0)
             {
@@ -409,7 +409,7 @@ public class WebBrowserService
                 string fileId = fileRow.Attributes[1].Value.Trim().Substring(3, 7);
 
                 // Create a new DataFile object and add it to the list
-                var file = DatabaseExtensions.CreateUspsFile(
+                DataFile file = DatabaseExtensions.CreateUspsFile(
                     fileName,
                     uploadDate.Month,
                     uploadDate.Year,

@@ -1,4 +1,8 @@
-namespace Server.DataObjects;
+using System;
+using System.IO;
+using Microsoft.Extensions.Configuration;
+
+namespace Server.ModuleControl;
 
 // Configuration settings for modules with path and authentication information
 public class ModuleSettings

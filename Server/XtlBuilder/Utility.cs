@@ -78,7 +78,7 @@ namespace Com.Raf.Utility
         {
             try
             {
-                using (var tarFile = File.OpenWrite(destinationFile))
+                using (FileStream tarFile = File.OpenWrite(destinationFile))
                 {
                     using (TarArchive tarArchive = TarArchive.CreateOutputTarArchive(tarFile))
                     {
@@ -126,9 +126,9 @@ namespace Com.Raf.Utility
         {
             try
             {
-                using (var tarFile = File.OpenRead(sourceFile))
+                using (FileStream tarFile = File.OpenRead(sourceFile))
                 {
-                    using (var tarArchive = TarArchive.CreateInputTarArchive(tarFile))
+                    using (TarArchive tarArchive = TarArchive.CreateInputTarArchive(tarFile))
                     {
                         tarArchive.ExtractContents(destinationFolder);
                     }

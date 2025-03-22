@@ -1,7 +1,7 @@
 using System;
 using Server.DataObjects;
 
-namespace Server.DTOs;
+namespace Server.DataObjects;
 
 public class FileDTO
 {
@@ -11,10 +11,10 @@ public class FileDTO
     public string Size { get; set; }
     public string DataYearMonth { get; set; }
     public string Cycle { get; set; }  // For USPS
-    public int? Day { get; set; }      // For RoyalMail
-    
+    public int? DataDay { get; set; }      // For RoyalMail
+
     // Conversion method
-    public static FileDTO FromFile(DataFile file)
+    public static FileDTO FromFile(FileDTO file)
     {
         return new FileDTO
         {
@@ -24,7 +24,7 @@ public class FileDTO
             Size = file.Size,
             DataYearMonth = file.DataYearMonth,
             Cycle = file.Cycle,
-            Day = file.DataDay
+            DataDay = file.DataDay
         };
     }
 }

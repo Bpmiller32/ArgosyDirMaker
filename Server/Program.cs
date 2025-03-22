@@ -10,12 +10,12 @@ using Server.DataObjects;
 using Server.Crawlers;
 using Server.ServerMessages;
 using Server.Tester;
-using Server.DTOs;
+using Server.ModuleControl;
 using Server;
 
 /* ---------------------------- Application setup --------------------------- */
 string applicationName = "DirMaker";
-using var mutex = new Mutex(false, applicationName);
+using Mutex mutex = new Mutex(false, applicationName);
 
 // Single instance of application check
 bool isAnotherInstanceOpen = !mutex.WaitOne(TimeSpan.Zero);
@@ -136,7 +136,7 @@ app.MapGet($"{reverseProxySubdomain}/status", async (HttpContext context, Status
 {
     context.Response.Headers.Append("Content-Type", "text/event-stream");
 
-    for (var i = 0; true; i++)
+    for (int i = 0; true; i++)
     {
         string message = await statusReporter.UpdateReport();
         byte[] bytes = Encoding.ASCII.GetBytes($"data: {message}\r\r");
@@ -150,179 +150,39 @@ app.MapGet($"{reverseProxySubdomain}/status", async (HttpContext context, Status
 // Crawler endpoints
 app.MapPost($"{reverseProxySubdomain}/smartmatch/crawler", (SmartMatchCrawler crawler, CrawlerMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            cancelTokens[SMARTMATCH_CRAWLER] = new();
-            Task.Run(() => crawler.Start(cancelTokens[SMARTMATCH_CRAWLER].Token));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            cancelTokens[SMARTMATCH_CRAWLER].Cancel();
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
+    return Server.ModuleControl.ModuleCommandHandler.HandleSmartMatchCrawlerCommand(crawler, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/parascript/crawler", (ParascriptCrawler crawler, CrawlerMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            cancelTokens[PARASCRIPT_CRAWLER] = new();
-            Task.Run(() => crawler.Start(cancelTokens[PARASCRIPT_CRAWLER].Token));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            cancelTokens[PARASCRIPT_CRAWLER].Cancel();
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
+    return Server.ModuleControl.ModuleCommandHandler.HandleParascriptCrawlerCommand(crawler, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/royalmail/crawler", (RoyalMailCrawler crawler, CrawlerMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            cancelTokens[ROYALMAIL_CRAWLER] = new();
-            Task.Run(() => crawler.Start(cancelTokens[ROYALMAIL_CRAWLER].Token));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            cancelTokens[ROYALMAIL_CRAWLER].Cancel();
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
+    return Server.ModuleControl.ModuleCommandHandler.HandleRoyalMailCrawlerCommand(crawler, message, cancelTokens);
 });
 
 // Builder endpoints
 app.MapPost($"{reverseProxySubdomain}/smartmatch/builder", (SmartMatchBuilder builder, SmartMatchBuilderMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            cancelTokens[SMARTMATCH_BUILDER] = new();
-            Utils.KillSmProcs();
-            if (string.IsNullOrEmpty(message.ExpireDays) || message.ExpireDays == "string")
-            {
-                message.ExpireDays = "105";
-            }
-            Task.Run(() => builder.Start(message.Cycle, message.DataYearMonth, cancelTokens[SMARTMATCH_BUILDER], message.ExpireDays));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            cancelTokens[SMARTMATCH_BUILDER].Cancel();
-            Utils.KillSmProcs();
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
+    return Server.ModuleControl.ModuleCommandHandler.HandleSmartMatchBuilderCommand(builder, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/parascript/builder", (ParascriptBuilder builder, ParascriptBuilderMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            cancelTokens[PARASCRIPT_BUILDER] = new();
-            Utils.KillPsProcs();
-            Task.Run(() => builder.Start(message.DataYearMonth, cancelTokens[PARASCRIPT_BUILDER].Token));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            cancelTokens[PARASCRIPT_BUILDER].Cancel();
-            Utils.KillPsProcs();
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
+    return Server.ModuleControl.ModuleCommandHandler.HandleParascriptBuilderCommand(builder, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/royalmail/builder", (RoyalMailBuilder builder, RoyalMailBuilderMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            cancelTokens[ROYALMAIL_BUILDER] = new();
-            Utils.KillRmProcs();
-            Task.Run(() => builder.Start(message.DataYearMonth, message.RoyalMailKey, cancelTokens[ROYALMAIL_BUILDER].Token));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            cancelTokens[ROYALMAIL_BUILDER].Cancel();
-            Utils.KillRmProcs();
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
+    return Server.ModuleControl.ModuleCommandHandler.HandleRoyalMailBuilderCommand(builder, message, cancelTokens);
 });
 
 // Tester endpoint
 app.MapPost($"{reverseProxySubdomain}/dirtester", (DirTester tester, TesterMessage message) =>
 {
-    switch (message.ModuleCommand)
-    {
-        case ModuleCommandType.Start:
-            Task.Run(() => tester.Start(message.TestDirectoryType, message.DataYearMonth));
-            return Results.Ok();
-
-        case ModuleCommandType.Stop:
-            tester.Status = ModuleStatus.Ready;
-            return Results.Ok();
-
-        default:
-            return Results.BadRequest();
-    }
-});
-
-// DTO example endpoint - returns all bundles as DTOs
-app.MapGet($"{reverseProxySubdomain}/bundles", async (DatabaseContext context) =>
-{
-    var bundles = new List<BundleDTO>();
-    
-    // Get USPS bundles
-    var uspsBundles = await context.UspsBundles().ToListAsync();
-    bundles.AddRange(uspsBundles.Select(BundleDTO.FromBundle));
-    
-    // Get Parascript bundles
-    var paraBundles = await context.ParaBundles().ToListAsync();
-    bundles.AddRange(paraBundles.Select(BundleDTO.FromBundle));
-    
-    // Get Royal Mail bundles
-    var royalBundles = await context.RoyalBundles().ToListAsync();
-    bundles.AddRange(royalBundles.Select(BundleDTO.FromBundle));
-    
-    return Results.Ok(bundles);
-});
-
-// DTO example endpoint - returns all files as DTOs
-app.MapGet($"{reverseProxySubdomain}/files", async (DatabaseContext context) =>
-{
-    var files = new List<FileDTO>();
-    
-    // Get USPS files
-    var uspsFiles = await context.UspsFiles().ToListAsync();
-    files.AddRange(uspsFiles.Select(FileDTO.FromFile));
-    
-    // Get Parascript files
-    var paraFiles = await context.ParaFiles().ToListAsync();
-    files.AddRange(paraFiles.Select(FileDTO.FromFile));
-    
-    // Get Royal Mail files
-    var royalFiles = await context.RoyalFiles().ToListAsync();
-    files.AddRange(royalFiles.Select(FileDTO.FromFile));
-    
-    return Results.Ok(files);
+    return Server.ModuleControl.ModuleCommandHandler.HandleTesterCommand(tester, message);
 });
 
 /* ---------------------------- Start application --------------------------- */
