@@ -2,7 +2,7 @@ using System.Net;
 
 namespace Server.Crawlers;
 
-// Service for handling FTP operations using modern HttpClient
+// Service for handling FTP operations using FtpWebRequest and WebClient
 public class FtpService
 {
     private readonly ILogger logger;
@@ -19,41 +19,47 @@ public class FtpService
     // Gets the last modified date of a file on an FTP server
     public async Task<DateTime> GetFileLastModifiedDate(string url, string username, string password, CancellationToken cancellationToken)
     {
-        using HttpClientHandler handler = new HttpClientHandler
-        {
-            Credentials = new NetworkCredential(username, password)
-        };
-        using HttpClient client = new HttpClient(handler);
-
-        // Create a custom request to get the file's timestamp
-        HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Head, url);
+        // Create FTP request
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
+        FtpWebRequest request = (FtpWebRequest)WebRequest.Create(url);
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
+        request.Method = WebRequestMethods.Ftp.GetFileSize; // Use GetFileSize as it also returns the timestamp
+        request.Credentials = new NetworkCredential(username, password);
+        request.UsePassive = true;
+        request.UseBinary = true;
+        request.KeepAlive = false;
 
         // Implement retry logic for transient failures
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             try
             {
-                HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
-                response.EnsureSuccessStatusCode();
+                using FtpWebResponse response = (FtpWebResponse)await request.GetResponseAsync();
+                DateTime lastModified = response.LastModified;
 
-                if (response.Content.Headers.LastModified.HasValue)
+                if (lastModified != DateTime.MinValue)
                 {
-                    return response.Content.Headers.LastModified.Value.DateTime;
+                    return lastModified;
                 }
 
-                // If we can't get the last modified date from headers, fall back to current time
+                // If we can't get the last modified date, fall back to current time
                 logger.LogWarning($"Could not determine last modified date for {url}, using current time");
                 return DateTime.Now;
             }
-            catch (Exception ex) when (attempt < MaxRetries && (ex is HttpRequestException || ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+            catch (Exception ex) when (attempt < MaxRetries &&
+                (ex is WebException || ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 logger.LogWarning($"Attempt {attempt} failed to get last modified date: {ex.Message}. Retrying...");
                 await Task.Delay(RetryDelay, cancellationToken);
             }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new TaskCanceledException("Operation was canceled", ex);
+            }
         }
 
         // If we've exhausted all retries, throw the exception
-        throw new HttpRequestException($"Failed to get last modified date for {url} after {MaxRetries} attempts");
+        throw new WebException($"Failed to get last modified date for {url} after {MaxRetries} attempts");
     }
 
     // Downloads a file from an FTP server to a local path, returns the size of the downloaded file in bytes
@@ -61,49 +67,51 @@ public class FtpService
     {
         logger.LogInformation($"Downloading file from {url} to {destinationPath}");
 
-        using HttpClientHandler handler = new HttpClientHandler
-        {
-            Credentials = new NetworkCredential(username, password)
-        };
-        using HttpClient client = new HttpClient(handler);
+        // Create destination directory if it doesn't exist
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
 
         // Implement retry logic for transient failures
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             try
             {
-                // Download as stream to avoid loading entire file into memory
-                using HttpResponseMessage response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-                response.EnsureSuccessStatusCode();
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
+                using WebClient client = new WebClient();
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
+                client.Credentials = new NetworkCredential(username, password);
 
-                // Get file size from headers if available
-                long fileSize = response.Content.Headers.ContentLength ?? -1;
+                // Register cancellation token
+                using CancellationTokenRegistration registration = cancellationToken.Register(() => client.CancelAsync());
 
-                // Create destination directory if it doesn't exist
-                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
+                // Download the file
+                await client.DownloadFileTaskAsync(new Uri(url), destinationPath);
 
-                // Stream directly to file
-                using FileStream fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
-                await response.Content.CopyToAsync(fileStream, cancellationToken);
-
-                // If we couldn't get the file size from headers, get it from the file
-                if (fileSize < 0)
-                {
-                    fileSize = fileStream.Length;
-                }
+                // Get the file size
+                FileInfo fileInfo = new FileInfo(destinationPath);
+                long fileSize = fileInfo.Length;
 
                 logger.LogInformation($"Successfully downloaded {FormatFileSize(fileSize)} to {destinationPath}");
                 return fileSize;
             }
-            catch (Exception ex) when (attempt < MaxRetries && (ex is HttpRequestException || ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+            catch (Exception ex) when (attempt < MaxRetries &&
+                (ex is WebException || ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 logger.LogWarning($"Attempt {attempt} failed to download file: {ex.Message}. Retrying...");
                 await Task.Delay(RetryDelay, cancellationToken);
             }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+            {
+                // Clean up partial download if canceled
+                if (File.Exists(destinationPath))
+                {
+                    try { File.Delete(destinationPath); } catch { /* Ignore cleanup errors */ }
+                }
+                throw new TaskCanceledException("Download operation was canceled", ex);
+            }
         }
 
         // If we've exhausted all retries, throw the exception
-        throw new HttpRequestException($"Failed to download file from {url} after {MaxRetries} attempts");
+        throw new WebException($"Failed to download file from {url} after {MaxRetries} attempts");
     }
 
     // Formats a file size in bytes to a human-readable string (KB, MB, GB)

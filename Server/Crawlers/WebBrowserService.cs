@@ -295,7 +295,7 @@ public class WebBrowserService
             HtmlNodeCollection allNodes = doc.DocumentNode.SelectNodes("//*");
             if (allNodes != null)
             {
-                foreach (var n in allNodes)
+                foreach (HtmlNode n in allNodes)
                 {
                     if (n.InnerText.Contains(pattern))
                     {

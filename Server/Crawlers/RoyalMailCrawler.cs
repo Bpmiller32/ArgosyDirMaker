@@ -219,7 +219,7 @@ public class RoyalMailCrawler : BaseModule
         try
         {
             // For each file that needs to be downloaded
-            foreach (var file in offDisk)
+            foreach (DataFile file in offDisk)
             {
                 if (stoppingToken.IsCancellationRequested)
                 {
@@ -269,7 +269,7 @@ public class RoyalMailCrawler : BaseModule
             // Get all bundles with their files
             List<Bundle> bundles = context.RoyalBundles().Include(b => b.Files).ToList();
 
-            foreach (var bundle in bundles)
+            foreach (Bundle bundle in bundles)
             {
                 // Skip bundles that are already marked as ready or have no files
                 if (bundle.IsReadyForBuild || bundle.Files.Count < 1)

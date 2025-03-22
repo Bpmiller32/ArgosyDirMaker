@@ -203,7 +203,7 @@ public class ParascriptBuilder : BaseModule
             Task.Run(() =>
             {
                 Directory.CreateDirectory(Path.Combine(dataOutputPath, "LACS"));
-                foreach (var file in Directory.GetFiles(Path.Combine(Settings.WorkingPath, "lacs")))
+                foreach (string file in Directory.GetFiles(Path.Combine(Settings.WorkingPath, "lacs")))
                 {
                     File.Copy(file, Path.Combine(Path.Combine(dataOutputPath, "LACS"), Path.GetFileName(file)));
                 }

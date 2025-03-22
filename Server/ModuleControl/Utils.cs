@@ -17,11 +17,11 @@ public static class Utils
         // Cleanup from previous run
         DirectoryInfo cleanupPath = new(path);
 
-        foreach (var file in cleanupPath.GetFiles())
+        foreach (FileInfo file in cleanupPath.GetFiles())
         {
             file.Delete();
         }
-        foreach (var dir in cleanupPath.GetDirectories())
+        foreach (DirectoryInfo dir in cleanupPath.GetDirectories())
         {
             dir.Delete(true);
         }
@@ -168,7 +168,7 @@ public static class Utils
 
     public static void KillPsProcs()
     {
-        foreach (var process in Process.GetProcessesByName("PDBIntegrity"))
+        foreach (Process process in Process.GetProcessesByName("PDBIntegrity"))
         {
             process.Kill(true);
         }

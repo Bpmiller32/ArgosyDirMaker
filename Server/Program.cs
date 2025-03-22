@@ -61,7 +61,8 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // Database connection
-builder.Services.AddDbContext<DatabaseContext>(opt => opt.UseSqlite($"Filename={builder.Configuration.GetValue<string>("DatabaseLocation")}"), ServiceLifetime.Transient);
+builder.Services.AddDbContextFactory<DatabaseContext>(opt =>
+    opt.UseSqlite($"Filename={builder.Configuration.GetValue<string>("DatabaseLocation")}"));
 
 /* -------------------------- Service registration -------------------------- */
 // Crawler services
@@ -84,8 +85,12 @@ builder.Services.AddSingleton<StatusReporter>();
 WebApplication app = builder.Build();
 
 // Database build and validation
-DatabaseContext context = app.Services.GetService<DatabaseContext>();
-context.Database.EnsureCreated();
+using (IServiceScope scope = app.Services.CreateScope())
+{
+    IDbContextFactory<DatabaseContext> contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<DatabaseContext>>();
+    using DatabaseContext context = contextFactory.CreateDbContext();
+    context.Database.EnsureCreated();
+}
 
 // Register server address
 app.Urls.Add("http://localhost:5000");
@@ -132,18 +137,42 @@ Dictionary<string, CancellationTokenSource> cancelTokens = new()
 
 /* --------------------------- Register endpoints --------------------------- */
 // Status endpoint
-app.MapGet($"{reverseProxySubdomain}/status", async (HttpContext context, StatusReporter statusReporter) =>
+app.MapGet($"{reverseProxySubdomain}/status", async (HttpContext context, StatusReporter statusReporter, CancellationToken cancellationToken) =>
 {
     context.Response.Headers.Append("Content-Type", "text/event-stream");
 
-    for (int i = 0; true; i++)
-    {
-        string message = await statusReporter.UpdateReport();
-        byte[] bytes = Encoding.ASCII.GetBytes($"data: {message}\r\r");
+    // Register for client disconnection
+    CancellationToken clientDisconnectToken = context.RequestAborted;
 
-        await context.Response.Body.WriteAsync(bytes);
-        await context.Response.Body.FlushAsync();
-        await Task.Delay(TimeSpan.FromSeconds(1));
+    // Combine with the application shutdown token
+    using CancellationTokenSource combinedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(clientDisconnectToken, cancellationToken);
+    CancellationToken combinedToken = combinedTokenSource.Token;
+
+    try
+    {
+        while (!combinedToken.IsCancellationRequested)
+        {
+            string message = await statusReporter.UpdateReport();
+            byte[] bytes = Encoding.ASCII.GetBytes($"data: {message}\r\r");
+
+            await context.Response.Body.WriteAsync(bytes, combinedToken);
+            await context.Response.Body.FlushAsync(combinedToken);
+
+            // Wait with cancellation support
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), combinedToken);
+            }
+            catch (TaskCanceledException)
+            {
+                // Expected when cancellation occurs during delay
+                break;
+            }
+        }
+    }
+    catch (OperationCanceledException)
+    {
+        // Expected when the client disconnects or the application is shutting down
     }
 });
 

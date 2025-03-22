@@ -10,7 +10,7 @@ namespace Server.ServerMessages;
 // Manages status reporting for all system modules
 public class StatusReporter
 {
-    private readonly DatabaseContext context;
+    private readonly IDbContextFactory<DatabaseContext> contextFactory;
 
     // Module instances
     private readonly SmartMatchCrawler smartMatchCrawler;
@@ -32,7 +32,7 @@ public class StatusReporter
 
     // Initializes a new instance of the StatusReporter class
     public StatusReporter(
-        DatabaseContext context,
+        IDbContextFactory<DatabaseContext> contextFactory,
         SmartMatchCrawler smartMatchCrawler,
         SmartMatchBuilder smartMatchBuilder,
         ParascriptCrawler parascriptCrawler,
@@ -41,7 +41,7 @@ public class StatusReporter
         RoyalMailBuilder royalMailBuilder,
         DirTester dirTester)
     {
-        this.context = context;
+        this.contextFactory = contextFactory;
         this.smartMatchCrawler = smartMatchCrawler;
         this.smartMatchBuilder = smartMatchBuilder;
         this.parascriptCrawler = parascriptCrawler;
@@ -83,17 +83,17 @@ public class StatusReporter
     private void InitializeSystemStatus()
     {
         // Initialize module status reports
-        foreach (var directoryType in DirectoryTypes)
+        foreach (string directoryType in DirectoryTypes)
         {
             // Initialize crawler module status
             systemStatus.Modules[$"{directoryType}Crawler"] = new ModuleStatusReport();
-            
+
             // Initialize builder module status
             systemStatus.Modules[$"{directoryType}Builder"] = new ModuleStatusReport();
-            
+
             // Initialize ready to build data
             systemStatus.ReadyToBuild[directoryType] = new ReadyToBuildData();
-            
+
             // Initialize completed builds
             systemStatus.CompletedBuilds[directoryType] = new List<string>();
         }
@@ -105,14 +105,12 @@ public class StatusReporter
     // Initializes database values for all directory types
     private void InitializeDbValues()
     {
-        // Using ConfigureAwait(false) to avoid deadlocks
-        Task.Run(async () =>
+        // Initialize database values synchronously for each directory type
+        foreach (string directoryType in DirectoryTypes)
         {
-            foreach (var directoryType in DirectoryTypes)
-            {
-                await UpdateDatabaseValuesAsync(directoryType).ConfigureAwait(false);
-            }
-        });
+            // Use Task.Run to avoid blocking the constructor, but don't create a fire-and-forget task
+            _ = UpdateDatabaseValuesAsync(directoryType);
+        }
     }
 
     // Updates database values for a specific directory type
@@ -140,6 +138,9 @@ public class StatusReporter
     // Updates ready-to-build bundles from the database for a specific directory type
     private async Task UpdateReadyToBuildBundlesAsync(string directoryType)
     {
+        // Create a new context instance for this operation
+        using DatabaseContext context = await contextFactory.CreateDbContextAsync();
+
         switch (directoryType)
         {
             case "SmartMatch":
@@ -169,18 +170,21 @@ public class StatusReporter
     private void AddBundleToReadyToBuild(string directoryType, Bundle bundle)
     {
         BundleDTO bundleDto = BundleDTO.FromBundle(bundle);
-        
+
         systemStatus.ReadyToBuild[directoryType].Bundles.Add(new BundleInfo
         {
             DataYearMonth = bundleDto.DataYearMonth,
             FileCount = bundle.FileCount,
-            DownloadTimestamp = bundle.DownloadTimestamp
+            // DownloadTimestamp = bundle.DownloadTimestamp
         });
     }
 
     // Updates completed builds from the database for a specific directory type
     private async Task UpdateCompletedBuildsAsync(string directoryType)
     {
+        // Create a new context instance for this operation
+        using DatabaseContext context = await contextFactory.CreateDbContextAsync();
+
         switch (directoryType)
         {
             case "SmartMatch":
@@ -247,19 +251,27 @@ public class StatusReporter
         List<KeyValuePair<string, BaseModule>> modulesToUpdate = modules.Where(m => m.Value.SendDbUpdate).ToList();
 
         // Process updates by directory type
-        foreach (var directoryType in DirectoryTypes)
+        foreach (string directoryType in DirectoryTypes)
         {
             List<KeyValuePair<string, BaseModule>> typeModules = modulesToUpdate.Where(m => m.Key.Contains(directoryType.ToLower(), StringComparison.OrdinalIgnoreCase)).ToList();
 
             if (typeModules.Count != 0)
             {
-                // Update database values for this directory type
-                await UpdateDatabaseValuesAsync(directoryType).ConfigureAwait(false);
-
-                // Reset the SendDbUpdate flag for processed modules
-                foreach (var module in typeModules)
+                try
                 {
-                    module.Value.SendDbUpdate = false;
+                    // Update database values for this directory type
+                    await UpdateDatabaseValuesAsync(directoryType).ConfigureAwait(false);
+
+                    // Reset the SendDbUpdate flag for processed modules
+                    foreach (KeyValuePair<string, BaseModule> module in typeModules)
+                    {
+                        module.Value.SendDbUpdate = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the exception but continue processing other directory types
+                    Console.Error.WriteLine($"Error processing database updates for {directoryType}: {ex.Message}");
                 }
             }
         }
