@@ -144,12 +144,7 @@ public class RoyalMailCrawler : BaseModule
             }
 
             // Create a new DataFile with RoyalMail provider
-            DataFile newFile = DatabaseExtensions.CreateRoyalFile(
-                tempFile.FileName,
-                tempFile.DataMonth,
-                tempFile.DataYear,
-                tempFile.DataYearMonth,
-                tempFile.DataDay);
+            DataFile newFile = DatabaseExtensions.CreateRoyalFile(tempFile.FileName, tempFile.DataMonth, tempFile.DataYear, tempFile.DataYearMonth, tempFile.DataDay);
 
             // Add new file to database
             context.Files.Add(newFile);
@@ -169,10 +164,7 @@ public class RoyalMailCrawler : BaseModule
             if (!bundleExists)
             {
                 // Create a new bundle
-                Bundle newBundle = DatabaseExtensions.CreateRoyalBundle(
-                    tempFile.DataMonth,
-                    tempFile.DataYear,
-                    tempFile.DataYearMonth);
+                Bundle newBundle = DatabaseExtensions.CreateRoyalBundle(tempFile.DataMonth, tempFile.DataYear, tempFile.DataYearMonth);
 
                 newBundle.Files.Add(newFile);
                 context.Bundles.Add(newBundle);

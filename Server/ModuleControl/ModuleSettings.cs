@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using Microsoft.Extensions.Configuration;
-
 namespace Server.ModuleControl;
 
 // Configuration settings for modules with path and authentication information
@@ -30,6 +26,15 @@ public class ModuleSettings
         ValidateDongleListPath(config);
         ValidateDiscDrivePath(config);
         ValidateCredentials(config);
+
+        if (DirectoryName == "Parascript")
+        {
+            CheckParascriptRequiredFiles();
+        }
+        if (DirectoryName == "RoyalMail")
+        {
+            CheckRoyalMailRequiredFiles();
+        }
     }
 
     // Validates and sets the address data path
@@ -129,10 +134,76 @@ public class ModuleSettings
 
         if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
         {
-            throw new Exception($"Missing username or password for: {DirectoryName}");
+            throw new Exception($"Missing username or password for - {DirectoryName}");
         }
 
         UserName = username;
         Password = password;
+    }
+
+    // Verifies that all required files exist for RoyalMail module before proceeding with the build
+    public void CheckParascriptRequiredFiles()
+    {
+        // Verify database integrity
+        string integrityToolPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "PDBIntegrity.exe");
+        if (!Utils.VerifyRequiredFile(integrityToolPath))
+        {
+            throw new FileNotFoundException($"Required integrity tool not found - {integrityToolPath}");
+        }
+    }
+
+    // Verifies that all required files exist for RoyalMail module before proceeding with the build
+    public void CheckRoyalMailRequiredFiles()
+    {
+        // Check for required files in Tools directory
+        string ukDirectoryCreationFilesPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkDirectoryCreationFiles");
+        if (!Directory.Exists(ukDirectoryCreationFilesPath))
+        {
+            throw new DirectoryNotFoundException($"UkDirectoryCreationFiles directory not found at - {ukDirectoryCreationFilesPath}");
+        }
+
+        string xmlFilePath = Path.Combine(ukDirectoryCreationFilesPath, "UK_RM_CM.xml");
+        if (!Utils.VerifyRequiredFile(xmlFilePath))
+        {
+            throw new FileNotFoundException($"UK_RM_CM.xml not found at - {xmlFilePath}");
+        }
+
+        string patternsFilePath = Path.Combine(ukDirectoryCreationFilesPath, "UK_RM_CM_Patterns.xml");
+        if (!Utils.VerifyRequiredFile(patternsFilePath))
+        {
+            throw new FileNotFoundException($"UK_RM_CM_Patterns.xml not found at - {patternsFilePath}");
+        }
+
+        // Check for required executables
+        string encryptRepPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "EncryptREP.exe");
+        if (!Utils.VerifyRequiredFile(encryptRepPath))
+        {
+            throw new FileNotFoundException($"EncryptREP.exe not found at - {encryptRepPath}");
+        }
+
+        string encryptPatternsPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "EncryptPatterns.exe");
+        if (!Utils.VerifyRequiredFile(encryptPatternsPath))
+        {
+            throw new FileNotFoundException($"EncryptPatterns.exe not found at - {encryptPatternsPath}");
+        }
+
+        string convertPafDataPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", "ConvertPafData.exe");
+        if (!Utils.VerifyRequiredFile(convertPafDataPath))
+        {
+            throw new FileNotFoundException($"ConvertPafData.exe not found at - {convertPafDataPath}");
+        }
+
+        // Check for compiler executables for each version
+        string compiler30Path = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", "3.0", "DirectoryDataCompiler.exe");
+        if (!Utils.VerifyRequiredFile(compiler30Path))
+        {
+            throw new FileNotFoundException($"DirectoryDataCompiler.exe 3.0 not found at - {compiler30Path}");
+        }
+
+        // string compiler19Path = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", "1.9", "DirectoryDataCompiler.exe");
+        // if (!Utils.VerifyRequiredFile(compiler30Path))
+        // {
+        //     throw new FileNotFoundException($"DirectoryDataCompiler.exe 1.9 not found at - {compiler19Path}");
+        // }
     }
 }

@@ -18,10 +18,12 @@ public class ParascriptBuilder : BaseModule
         public const int Complete = 100;
     }
 
+    // DI
     private readonly ILogger<ParascriptBuilder> logger;
     private readonly IConfiguration config;
     private readonly DatabaseContext context;
 
+    // Fields
     private string dataYearMonth;
     private string dataSourcePath;
     private string dataOutputPath;
@@ -35,13 +37,10 @@ public class ParascriptBuilder : BaseModule
         Settings.DirectoryName = "Parascript";
     }
 
-    // Starts the Parascript build process for the specified data period
-    // dataYearMonth: The year and month of the data to process in YYYYMM format
-    // stoppingToken: Cancellation token to stop the operation
     public async Task Start(string dataYearMonth, CancellationToken stoppingToken)
     {
-        // Only start if the module is in Ready state
-        if (Status != ModuleStatus.Ready)
+        // Only start if the module is not in progress
+        if (Status == ModuleStatus.InProgress)
         {
             return;
         }
@@ -63,7 +62,7 @@ public class ParascriptBuilder : BaseModule
 
             Message = "Cleaning up from previous builds";
             Progress = ProgressSteps.InitialCleanup;
-            CleanupDirectories(fullClean: true, stoppingToken);
+            Utils.CleanupDirectories(true, Settings, dataYearMonth, stoppingToken);
 
             Message = "Compiling database";
             Progress = ProgressSteps.Extraction;
@@ -75,7 +74,7 @@ public class ParascriptBuilder : BaseModule
 
             Message = "Cleaning up post build";
             Progress = ProgressSteps.FinalCleanup;
-            CleanupDirectories(fullClean: false, stoppingToken);
+            Utils.CleanupDirectories(false, Settings, dataYearMonth, stoppingToken);
 
             Message = "Updating packaged directories";
             Progress = ProgressSteps.DatabaseUpdate;
@@ -108,6 +107,7 @@ public class ParascriptBuilder : BaseModule
             return;
         }
 
+        // Clear only the directory folders in the dataSourcePath, leaving Files.zip for a 2nd try
         DirectoryInfo inputPath = new(dataSourcePath);
         foreach (DirectoryInfo dir in inputPath.GetDirectories())
         {
@@ -115,39 +115,14 @@ public class ParascriptBuilder : BaseModule
             dir.Delete(true);
         }
 
+        // Extract the Files.zip file
         string zipFilePath = Path.Combine(dataSourcePath, "Files.zip");
-        if (!File.Exists(zipFilePath))
+        if (!Utils.VerifyRequiredFile(zipFilePath))
         {
             throw new FileNotFoundException($"Source file not found: {zipFilePath}");
         }
 
         ZipFile.ExtractToDirectory(zipFilePath, dataSourcePath);
-    }
-
-    // Cleans up directories before or after the build process
-    // fullClean: If true, cleans both working and output directories; otherwise, only cleans working directory
-    private void CleanupDirectories(bool fullClean, CancellationToken stoppingToken)
-    {
-        if (stoppingToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        // Terminate any running Parascript processes
-        Utils.KillPsProcs();
-
-        // Ensure directories exist
-        Directory.CreateDirectory(Settings.WorkingPath);
-        Directory.CreateDirectory(dataOutputPath);
-
-        // Clean working directory
-        Utils.Cleanup(Settings.WorkingPath, stoppingToken);
-
-        // Clean output directory if full clean requested
-        if (fullClean)
-        {
-            Utils.Cleanup(dataOutputPath, stoppingToken);
-        }
     }
 
     // Extracts component files in parallel
@@ -178,7 +153,7 @@ public class ParascriptBuilder : BaseModule
                 string dpvPath = Path.Combine(Settings.WorkingPath, "dpv");
                 string dpvSourceFile = Path.Combine(dataSourcePath, "DPVandLACS", "DPVfull", $"ads_dpv_09_{monthYear}.exe");
 
-                if (!File.Exists(dpvSourceFile))
+                if (!Utils.VerifyRequiredFile(dpvSourceFile))
                 {
                     throw new FileNotFoundException($"DPV source file not found: {dpvSourceFile}");
                 }
@@ -189,13 +164,6 @@ public class ParascriptBuilder : BaseModule
                 // Verify database integrity
                 string integrityToolPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "PDBIntegrity.exe");
                 string logFilePath = Path.Combine(dpvPath, "fileinfo_log.txt");
-                
-                // Check if the integrity tool exists before trying to run it
-                if (!Utils.VerifyRequiredExecutable(integrityToolPath, logger))
-                {
-                    throw new FileNotFoundException($"Required integrity tool not found: {integrityToolPath}");
-                }
-
                 Process proc = Utils.RunProc(integrityToolPath, logFilePath);
 
                 using StreamReader sr = proc.StandardOutput;
@@ -218,7 +186,7 @@ public class ParascriptBuilder : BaseModule
         {
             string componentPath = Path.Combine(Settings.WorkingPath, componentName);
 
-            if (!File.Exists(sourceFilePath))
+            if (!Utils.VerifyRequiredFile(sourceFilePath))
             {
                 throw new FileNotFoundException($"{componentName} source file not found: {sourceFilePath}");
             }
@@ -276,7 +244,7 @@ public class ParascriptBuilder : BaseModule
 
             Directory.CreateDirectory(outputDir);
 
-            if (File.Exists(outputFile))
+            if (Utils.VerifyRequiredFile(outputFile))
             {
                 File.Delete(outputFile);
             }

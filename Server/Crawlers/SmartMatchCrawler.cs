@@ -157,11 +157,7 @@ public class SmartMatchCrawler : BaseModule
                 if (!bundleExists)
                 {
                     // Create new bundle
-                    Bundle newBundle = DatabaseExtensions.CreateUspsBundle(
-                        file.DataMonth,
-                        file.DataYear,
-                        file.DataYearMonth,
-                        file.Cycle);
+                    Bundle newBundle = DatabaseExtensions.CreateUspsBundle(file.DataMonth, file.DataYear, file.DataYearMonth, file.Cycle);
 
                     newBundle.Files.Add(file);
                     context.Bundles.Add(newBundle);

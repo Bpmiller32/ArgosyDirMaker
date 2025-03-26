@@ -1,13 +1,46 @@
-﻿﻿﻿using System.Collections;
+﻿﻿using System.Collections;
 using System.Diagnostics;
+using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text;
-using Microsoft.Extensions.Logging;
+using Server.ModuleControl;
 
 namespace Server;
 
 public static class Utils
 {
+    // Cleans up directories before or after the build process. fullClean: If true, cleans both working and output directories; otherwise, only cleans working directory
+    public static void CleanupDirectories(bool fullClean, ModuleSettings settings, string dataYearMonth, CancellationToken stoppingToken)
+    {
+        if (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        // Terminate any running processes
+        if (settings.DirectoryName == "Parascript")
+        {
+            KillPsProcs();
+        }
+        if (settings.DirectoryName == "RoyalMail")
+        {
+            KillRmProcs();
+        }
+
+        // Ensure directories exist
+        Directory.CreateDirectory(settings.WorkingPath);
+        Directory.CreateDirectory(Path.Combine(settings.OutputPath, dataYearMonth));
+
+        // Clean working directory
+        Cleanup(settings.WorkingPath, stoppingToken);
+
+        // Clean output directory if full clean requested
+        if (fullClean)
+        {
+            Cleanup(Path.Combine(settings.OutputPath, dataYearMonth), stoppingToken);
+        }
+    }
+
     public static void Cleanup(string path, CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
@@ -26,40 +59,6 @@ public static class Utils
         {
             dir.Delete(true);
         }
-    }
-
-    public static string CalculateDbDate()
-    {
-        DateTime timestamp = DateTime.Now;
-        return $"{timestamp.Month}/{timestamp.Day}/{timestamp.Year}";
-    }
-
-    public static string CalculateDbTime()
-    {
-        DateTime timestamp = DateTime.Now;
-        string hour;
-        string minute;
-        string ampm;
-        if (timestamp.Minute < 10)
-        {
-            minute = timestamp.Minute.ToString().PadLeft(2, '0');
-        }
-        else
-        {
-            minute = timestamp.Minute.ToString();
-        }
-        if (timestamp.Hour > 12)
-        {
-            hour = (timestamp.Hour - 12).ToString();
-            ampm = "pm";
-        }
-        else
-        {
-            hour = timestamp.Hour.ToString();
-            ampm = "am";
-        }
-
-        return $"{hour}:{minute} {ampm}";
     }
 
     public static string WrapQuotes(string input)
@@ -94,13 +93,12 @@ public static class Utils
     }
 
     // Runs a process with the specified file name and arguments
-    // Checks if the executable exists before attempting to run it
     public static Process RunProc(string fileName, string args)
     {
         // Check if the executable file exists
         if (!File.Exists(fileName))
         {
-            throw new FileNotFoundException($"Required executable not found: {fileName}");
+            throw new FileNotFoundException($"Required executable not found - {fileName}");
         }
 
         ProcessStartInfo startInfo = new()
@@ -123,14 +121,11 @@ public static class Utils
         return proc;
     }
 
-    // Verifies that a required executable exists
-    // Returns true if the executable exists, false otherwise
-    // Logs an error message if the executable is not found
-    public static bool VerifyRequiredExecutable(string executablePath, ILogger logger)
+    // Verifies that a required executable exists. Returns true if the executable exists, false otherwise
+    public static bool VerifyRequiredFile(string executablePath)
     {
         if (!File.Exists(executablePath))
         {
-            logger.LogError($"Required executable not found: {executablePath}");
             return false;
         }
         return true;
@@ -300,5 +295,16 @@ public static class Utils
     {
         Array.Reverse(bytes);
         return new(bytes);
+    }
+
+    // Checks if the application is running with administrator privileges
+    public static bool IsRunningAsAdministrator()
+    {
+        // Get the current Windows identity
+        using var identity = WindowsIdentity.GetCurrent();
+        var principal = new WindowsPrincipal(identity);
+
+        // Check if the current user is in the Administrator role
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 }

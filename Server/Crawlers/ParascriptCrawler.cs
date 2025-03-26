@@ -33,7 +33,7 @@ public class ParascriptCrawler : BaseModule
     public async Task Start(CancellationToken stoppingToken)
     {
         // Avoid starting if already in progress
-        if (Status != ModuleStatus.Ready)
+        if (Status == ModuleStatus.InProgress)
         {
             return;
         }
@@ -139,20 +139,12 @@ public class ParascriptCrawler : BaseModule
                 string yearMonth = string.Concat(fullYear, month);
 
                 // Create ADS file record
-                DataFile adsFile = DatabaseExtensions.CreateParaFile(
-                    ADS_FILE_NAME,
-                    int.Parse(month),
-                    int.Parse(fullYear),
-                    yearMonth);
+                DataFile adsFile = DatabaseExtensions.CreateParaFile(ADS_FILE_NAME, int.Parse(month), int.Parse(fullYear), yearMonth);
                 adsFile.OnDisk = true;
                 tempFiles.Add(adsFile);
 
                 // Create DPV file record
-                DataFile dpvFile = DatabaseExtensions.CreateParaFile(
-                    DPV_FILE_NAME,
-                    int.Parse(month),
-                    int.Parse(fullYear),
-                    yearMonth);
+                DataFile dpvFile = DatabaseExtensions.CreateParaFile(DPV_FILE_NAME, int.Parse(month), int.Parse(fullYear), yearMonth);
                 dpvFile.OnDisk = true;
                 tempFiles.Add(dpvFile);
 

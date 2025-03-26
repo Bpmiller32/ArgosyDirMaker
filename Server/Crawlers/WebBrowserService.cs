@@ -274,11 +274,8 @@ public class WebBrowserService
         HtmlAgilityPack.HtmlDocument doc = new();
         doc.LoadHtml(await page.GetContentAsync());
 
-        // Search for nodes containing the pattern
-        HtmlNode node = null;
-
-        // Try different search strategies
-        node = doc.DocumentNode.SelectSingleNode($"//span[contains(text(), '{pattern}')] | //div[contains(text(), '{pattern}')]");
+        // Search for nodes containing the pattern, try different search strategies
+        HtmlNode node = doc.DocumentNode.SelectSingleNode($"//span[contains(text(), '{pattern}')] | //div[contains(text(), '{pattern}')]");
 
         if (node == null)
         {
