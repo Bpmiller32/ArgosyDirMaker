@@ -1,7 +1,8 @@
-﻿using System.Collections;
+﻿﻿﻿using System.Collections;
 using System.Diagnostics;
 using System.ServiceProcess;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace Server;
 
@@ -92,8 +93,16 @@ public static class Utils
         }
     }
 
+    // Runs a process with the specified file name and arguments
+    // Checks if the executable exists before attempting to run it
     public static Process RunProc(string fileName, string args)
     {
+        // Check if the executable file exists
+        if (!File.Exists(fileName))
+        {
+            throw new FileNotFoundException($"Required executable not found: {fileName}");
+        }
+
         ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
@@ -112,6 +121,19 @@ public static class Utils
         proc.Start();
 
         return proc;
+    }
+
+    // Verifies that a required executable exists
+    // Returns true if the executable exists, false otherwise
+    // Logs an error message if the executable is not found
+    public static bool VerifyRequiredExecutable(string executablePath, ILogger logger)
+    {
+        if (!File.Exists(executablePath))
+        {
+            logger.LogError($"Required executable not found: {executablePath}");
+            return false;
+        }
+        return true;
     }
 
     public static void KillSmProcs()

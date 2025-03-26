@@ -6,6 +6,18 @@ namespace Server.Builders;
 
 public class ParascriptBuilder : BaseModule
 {
+    // Progress constants for better readability and maintenance
+    private static class ProgressSteps
+    {
+        public const int ExtractDownload = 0;
+        public const int InitialCleanup = 1;
+        public const int Extraction = 3;
+        public const int Packaging = 21;
+        public const int FinalCleanup = 98;
+        public const int DatabaseUpdate = 99;
+        public const int Complete = 100;
+    }
+
     private readonly ILogger<ParascriptBuilder> logger;
     private readonly IConfiguration config;
     private readonly DatabaseContext context;
@@ -23,9 +35,12 @@ public class ParascriptBuilder : BaseModule
         Settings.DirectoryName = "Parascript";
     }
 
+    // Starts the Parascript build process for the specified data period
+    // dataYearMonth: The year and month of the data to process in YYYYMM format
+    // stoppingToken: Cancellation token to stop the operation
     public async Task Start(string dataYearMonth, CancellationToken stoppingToken)
     {
-        // Avoids lag from client click to server, likely unnessasary.... 
+        // Only start if the module is in Ready state
         if (Status != ModuleStatus.Ready)
         {
             return;
@@ -33,7 +48,7 @@ public class ParascriptBuilder : BaseModule
 
         try
         {
-            logger.LogInformation("Starting Builder");
+            logger.LogInformation("Starting Parascript Builder");
             Status = ModuleStatus.InProgress;
             CurrentTask = dataYearMonth;
 
@@ -43,30 +58,30 @@ public class ParascriptBuilder : BaseModule
             dataOutputPath = Path.Combine(Settings.OutputPath, dataYearMonth);
 
             Message = "Extracting files from download";
-            Progress = 0;
+            Progress = ProgressSteps.ExtractDownload;
             ExtractDownload(stoppingToken);
 
             Message = "Cleaning up from previous builds";
-            Progress = 1;
-            Cleanup(fullClean: true, stoppingToken);
+            Progress = ProgressSteps.InitialCleanup;
+            CleanupDirectories(fullClean: true, stoppingToken);
 
             Message = "Compiling database";
-            Progress = 3;
-            await Extract(stoppingToken);
+            Progress = ProgressSteps.Extraction;
+            await ExtractComponents(stoppingToken);
 
             Message = "Packaging database";
-            Progress = 21;
-            await Archive(stoppingToken);
+            Progress = ProgressSteps.Packaging;
+            await ArchiveComponents(stoppingToken);
 
             Message = "Cleaning up post build";
-            Progress = 98;
-            Cleanup(fullClean: false, stoppingToken);
+            Progress = ProgressSteps.FinalCleanup;
+            CleanupDirectories(fullClean: false, stoppingToken);
 
             Message = "Updating packaged directories";
-            Progress = 99;
-            await CheckBuildComplete(stoppingToken);
+            Progress = ProgressSteps.DatabaseUpdate;
+            await UpdateBuildStatus(stoppingToken);
 
-            Progress = 100;
+            Progress = ProgressSteps.Complete;
             Status = ModuleStatus.Ready;
             Message = "";
             CurrentTask = "";
@@ -76,15 +91,16 @@ public class ParascriptBuilder : BaseModule
         {
             Status = ModuleStatus.Ready;
             CurrentTask = "";
-            logger.LogDebug($"{e.Message}");
+            logger.LogDebug($"Build cancelled: {e.Message}");
         }
         catch (Exception e)
         {
             Status = ModuleStatus.Error;
-            logger.LogError($"{e.Message}");
+            logger.LogError($"Build failed: {e.Message}");
         }
     }
 
+    // Extracts the downloaded zip file to the source directory
     private void ExtractDownload(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
@@ -99,72 +115,95 @@ public class ParascriptBuilder : BaseModule
             dir.Delete(true);
         }
 
-        ZipFile.ExtractToDirectory(Path.Combine(dataSourcePath, "Files.zip"), dataSourcePath);
+        string zipFilePath = Path.Combine(dataSourcePath, "Files.zip");
+        if (!File.Exists(zipFilePath))
+        {
+            throw new FileNotFoundException($"Source file not found: {zipFilePath}");
+        }
+
+        ZipFile.ExtractToDirectory(zipFilePath, dataSourcePath);
     }
 
-    private void Cleanup(bool fullClean, CancellationToken stoppingToken)
+    // Cleans up directories before or after the build process
+    // fullClean: If true, cleans both working and output directories; otherwise, only cleans working directory
+    private void CleanupDirectories(bool fullClean, CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
+        // Terminate any running Parascript processes
         Utils.KillPsProcs();
 
+        // Ensure directories exist
         Directory.CreateDirectory(Settings.WorkingPath);
         Directory.CreateDirectory(dataOutputPath);
 
-        if (!fullClean)
-        {
-            Utils.Cleanup(Settings.WorkingPath, stoppingToken);
-            return;
-        }
-
+        // Clean working directory
         Utils.Cleanup(Settings.WorkingPath, stoppingToken);
-        Utils.Cleanup(dataOutputPath, stoppingToken);
+
+        // Clean output directory if full clean requested
+        if (fullClean)
+        {
+            Utils.Cleanup(dataOutputPath, stoppingToken);
+        }
     }
 
-    private async Task Extract(CancellationToken stoppingToken)
+    // Extracts component files in parallel
+    private async Task ExtractComponents(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
+        // Format month and year for file naming
+        string monthYear = $"{dataYearMonth.Substring(4, 2)}{dataYearMonth.Substring(2, 2)}";
+
         List<Task> buildTasks =
         [
-            // Zip
+            // Extract Zip4 component
+            CreateExtractionTask("zip", Path.Combine(dataSourcePath, "ads6", $"ads_zip_09_{monthYear}.exe"), stoppingToken),
+            
+            // Extract LACS component
+            CreateExtractionTask("lacs", Path.Combine(dataSourcePath, "DPVandLACS", "LACSLink", $"ads_lac_09_{monthYear}.exe"), stoppingToken),
+            
+            // Extract Suite component
+            CreateExtractionTask("suite", Path.Combine(dataSourcePath, "DPVandLACS", "SuiteLink", $"ads_slk_09_{monthYear}.exe"), stoppingToken),
+            
+            // Extract DPV component and verify integrity
             Task.Run(() =>
             {
-                ZipFile.ExtractToDirectory(Path.Combine(dataSourcePath, "ads6", $"ads_zip_09_{dataYearMonth.Substring(4, 2)}{dataYearMonth.Substring(2, 2)}.exe"), Path.Combine(Settings.WorkingPath, "zip"));
-                File.Create(Path.Combine(Settings.WorkingPath, "zip", "live.txt")).Close();
-            }, stoppingToken),
-            // Lacs,
-            Task.Run(() =>
-            {
-                ZipFile.ExtractToDirectory(Path.Combine(dataSourcePath, "DPVandLACS", "LACSLink", $"ads_lac_09_{dataYearMonth.Substring(4, 2)}{dataYearMonth.Substring(2, 2)}.exe"), Path.Combine(Settings.WorkingPath, "lacs"));
-                File.Create(Path.Combine(Settings.WorkingPath, "lacs", "live.txt")).Close();
-            }, stoppingToken),
-            // Suite
-            Task.Run(() =>
-            {
-                ZipFile.ExtractToDirectory(Path.Combine(dataSourcePath, "DPVandLACS", "SuiteLink", $"ads_slk_09_{dataYearMonth.Substring(4, 2)}{dataYearMonth.Substring(2, 2)}.exe"), Path.Combine(Settings.WorkingPath, "suite"));
-                File.Create(Path.Combine(Settings.WorkingPath, "suite", "live.txt")).Close();
-            }, stoppingToken),
-            // Dpv
-            Task.Run(() =>
-            {
-                ZipFile.ExtractToDirectory(Path.Combine(dataSourcePath, "DPVandLACS", "DPVfull", $"ads_dpv_09_{dataYearMonth.Substring(4, 2)}{dataYearMonth.Substring(2, 2)}.exe"), Path.Combine(Settings.WorkingPath, "dpv"));
-                File.Create(Path.Combine(Settings.WorkingPath, "dpv", "live.txt")).Close();
+                string dpvPath = Path.Combine(Settings.WorkingPath, "dpv");
+                string dpvSourceFile = Path.Combine(dataSourcePath, "DPVandLACS", "DPVfull", $"ads_dpv_09_{monthYear}.exe");
 
-                Process proc = Utils.RunProc(Path.Combine(Directory.GetCurrentDirectory(), "Tools", "PDBIntegrity.exe"), Path.Combine(Settings.WorkingPath, "dpv", "fileinfo_log.txt"));
+                if (!File.Exists(dpvSourceFile))
+                {
+                    throw new FileNotFoundException($"DPV source file not found: {dpvSourceFile}");
+                }
+
+                ZipFile.ExtractToDirectory(dpvSourceFile, dpvPath);
+                File.Create(Path.Combine(dpvPath, "live.txt")).Close();
+
+                // Verify database integrity
+                string integrityToolPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "PDBIntegrity.exe");
+                string logFilePath = Path.Combine(dpvPath, "fileinfo_log.txt");
+                
+                // Check if the integrity tool exists before trying to run it
+                if (!Utils.VerifyRequiredExecutable(integrityToolPath, logger))
+                {
+                    throw new FileNotFoundException($"Required integrity tool not found: {integrityToolPath}");
+                }
+
+                Process proc = Utils.RunProc(integrityToolPath, logFilePath);
 
                 using StreamReader sr = proc.StandardOutput;
                 string procOutput = sr.ReadToEnd();
 
                 if (!procOutput.Contains("Database files are consistent"))
                 {
-                    throw new Exception("Database files are NOT consistent");
+                    throw new Exception("DPV database files integrity check failed");
                 }
             }, stoppingToken)
         ];
@@ -172,7 +211,25 @@ public class ParascriptBuilder : BaseModule
         await Task.WhenAll(buildTasks);
     }
 
-    private async Task Archive(CancellationToken stoppingToken)
+    // Creates a task to extract a component to its working directory
+    private Task CreateExtractionTask(string componentName, string sourceFilePath, CancellationToken stoppingToken)
+    {
+        return Task.Run(() =>
+        {
+            string componentPath = Path.Combine(Settings.WorkingPath, componentName);
+
+            if (!File.Exists(sourceFilePath))
+            {
+                throw new FileNotFoundException($"{componentName} source file not found: {sourceFilePath}");
+            }
+
+            ZipFile.ExtractToDirectory(sourceFilePath, componentPath);
+            File.Create(Path.Combine(componentPath, "live.txt")).Close();
+        }, stoppingToken);
+    }
+
+    // Archives the extracted components in parallel
+    private async Task ArchiveComponents(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
@@ -181,51 +238,76 @@ public class ParascriptBuilder : BaseModule
 
         List<Task> buildTasks =
         [
-            // Zip
+            // Archive Zip4 component
+            CreateArchiveTask("zip", "Zip4", "Zip4.zip", stoppingToken),
+            
+            // Archive DPV component
+            CreateArchiveTask("dpv", "DPV", "DPV.zip", stoppingToken),
+            
+            // Archive Suite component
+            CreateArchiveTask("suite", "Suite", "SUITE.zip", stoppingToken),
+            
+            // Copy LACS files (special case - individual files)
             Task.Run(() =>
             {
-                Directory.CreateDirectory(Path.Combine(dataOutputPath, "Zip4"));
-                ZipFile.CreateFromDirectory(Path.Combine(Settings.WorkingPath, "zip"), Path.Combine(dataOutputPath, "Zip4", "Zip4.zip"));
-            }, stoppingToken),
-            // Dpv
-            Task.Run(() =>
-            {
-                Directory.CreateDirectory(Path.Combine(dataOutputPath, "DPV"));
-                ZipFile.CreateFromDirectory(Path.Combine(Settings.WorkingPath, "dpv"), Path.Combine(dataOutputPath, "DPV", "DPV.zip"));
-            }, stoppingToken),
-            // Suite
-            Task.Run(() =>
-            {
-                Directory.CreateDirectory(Path.Combine(dataOutputPath, "Suite"));
-                ZipFile.CreateFromDirectory(Path.Combine(Settings.WorkingPath, "suite"), Path.Combine(dataOutputPath, "Suite", "SUITE.zip"));
-            }, stoppingToken),
-            // Lacs
-            Task.Run(() =>
-            {
-                Directory.CreateDirectory(Path.Combine(dataOutputPath, "LACS"));
-                foreach (string file in Directory.GetFiles(Path.Combine(Settings.WorkingPath, "lacs")))
+                string lacsSourcePath = Path.Combine(Settings.WorkingPath, "lacs");
+                string lacsOutputPath = Path.Combine(dataOutputPath, "LACS");
+
+                Directory.CreateDirectory(lacsOutputPath);
+
+                foreach (string file in Directory.GetFiles(lacsSourcePath))
                 {
-                    File.Copy(file, Path.Combine(Path.Combine(dataOutputPath, "LACS"), Path.GetFileName(file)));
+                    File.Copy(file, Path.Combine(lacsOutputPath, Path.GetFileName(file)), overwrite: true);
                 }
-            }, stoppingToken),
+            }, stoppingToken)
         ];
 
         await Task.WhenAll(buildTasks);
     }
 
-    private async Task CheckBuildComplete(CancellationToken stoppingToken)
+    // Creates a task to archive a component to its output directory
+    private Task CreateArchiveTask(string componentName, string outputDirName, string zipFileName, CancellationToken stoppingToken)
+    {
+        return Task.Run(() =>
+        {
+            string sourcePath = Path.Combine(Settings.WorkingPath, componentName);
+            string outputDir = Path.Combine(dataOutputPath, outputDirName);
+            string outputFile = Path.Combine(outputDir, zipFileName);
+
+            Directory.CreateDirectory(outputDir);
+
+            if (File.Exists(outputFile))
+            {
+                File.Delete(outputFile);
+            }
+
+            ZipFile.CreateFromDirectory(sourcePath, outputFile);
+        }, stoppingToken);
+    }
+
+    // Updates the database to mark the build as complete
+    private async Task UpdateBuildStatus(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
-        // Will be null if Crawler never made a record for it, watch out if running standalone
+        // Find the bundle record for this data period
         Bundle bundle = context.ParaBundles().Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
-        bundle.IsBuildComplete = true;
-        bundle.CompileTimestamp = DateTime.Now;
 
-        await context.SaveChangesAsync(stoppingToken);
-        SendDbUpdate = true;
+        // Only update if bundle exists (it may not if running standalone without a crawler)
+        if (bundle != null)
+        {
+            bundle.IsBuildComplete = true;
+            bundle.CompileTimestamp = DateTime.Now;
+
+            await context.SaveChangesAsync(stoppingToken);
+            SendDbUpdate = true;
+        }
+        else
+        {
+            logger.LogWarning($"No bundle record found for {dataYearMonth}. Database not updated.");
+        }
     }
 }

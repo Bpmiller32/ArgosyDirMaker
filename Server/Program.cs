@@ -11,7 +11,6 @@ using Server.Crawlers;
 using Server.ServerMessages;
 using Server.Tester;
 using Server.ModuleControl;
-using Server;
 
 /* ---------------------------- Application setup --------------------------- */
 string applicationName = "DirMaker";
@@ -179,39 +178,39 @@ app.MapGet($"{reverseProxySubdomain}/status", async (HttpContext context, Status
 // Crawler endpoints
 app.MapPost($"{reverseProxySubdomain}/smartmatch/crawler", (SmartMatchCrawler crawler, CrawlerMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleSmartMatchCrawlerCommand(crawler, message, cancelTokens);
+    return ModuleCommandHandler.HandleSmartMatchCrawlerCommand(crawler, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/parascript/crawler", (ParascriptCrawler crawler, CrawlerMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleParascriptCrawlerCommand(crawler, message, cancelTokens);
+    return ModuleCommandHandler.HandleParascriptCrawlerCommand(crawler, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/royalmail/crawler", (RoyalMailCrawler crawler, CrawlerMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleRoyalMailCrawlerCommand(crawler, message, cancelTokens);
+    return ModuleCommandHandler.HandleRoyalMailCrawlerCommand(crawler, message, cancelTokens);
 });
 
 // Builder endpoints
 app.MapPost($"{reverseProxySubdomain}/smartmatch/builder", (SmartMatchBuilder builder, SmartMatchBuilderMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleSmartMatchBuilderCommand(builder, message, cancelTokens);
+    return ModuleCommandHandler.HandleSmartMatchBuilderCommand(builder, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/parascript/builder", (ParascriptBuilder builder, ParascriptBuilderMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleParascriptBuilderCommand(builder, message, cancelTokens);
+    return ModuleCommandHandler.HandleParascriptBuilderCommand(builder, message, cancelTokens);
 });
 
 app.MapPost($"{reverseProxySubdomain}/royalmail/builder", (RoyalMailBuilder builder, RoyalMailBuilderMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleRoyalMailBuilderCommand(builder, message, cancelTokens);
+    return ModuleCommandHandler.HandleRoyalMailBuilderCommand(builder, message, cancelTokens);
 });
 
 // Tester endpoint
 app.MapPost($"{reverseProxySubdomain}/dirtester", (DirTester tester, TesterMessage message) =>
 {
-    return Server.ModuleControl.ModuleCommandHandler.HandleTesterCommand(tester, message);
+    return ModuleCommandHandler.HandleTesterCommand(tester, message);
 });
 
 /* ---------------------------- Start application --------------------------- */

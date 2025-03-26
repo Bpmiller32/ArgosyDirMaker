@@ -9,11 +9,27 @@ namespace Server.Builders;
 
 public class RoyalMailBuilder : BaseModule
 {
+    // Progress constants for better readability and maintenance
+    private static class ProgressSteps
+    {
+        public const int VerifyKey = 0;
+        public const int ExtractPaf = 1;
+        public const int InitialCleanup = 22;
+        public const int UpdateSmi = 23;
+        public const int ConvertData = 24;
+        public const int Compilation = 47;
+        public const int Packaging = 97;
+        public const int FinalCleanup = 98;
+        public const int DatabaseUpdate = 99;
+        public const int Complete = 100;
+    }
+
     private readonly ILogger<RoyalMailBuilder> logger;
     private readonly IConfiguration config;
     private readonly DatabaseContext context;
 
     private string dataYearMonth;
+    private string key;
     private string dataSourcePath;
     private string dataOutputPath;
 
@@ -28,7 +44,7 @@ public class RoyalMailBuilder : BaseModule
 
     public async Task Start(string dataYearMonth, string key, CancellationToken stoppingToken)
     {
-        // Avoids lag from client click to server, likely unnessasary.... 
+        // Only start if the module is in Ready state
         if (Status != ModuleStatus.Ready)
         {
             return;
@@ -36,52 +52,53 @@ public class RoyalMailBuilder : BaseModule
 
         try
         {
-            logger.LogInformation("Starting Builder");
+            logger.LogInformation("Starting RoyalMail Builder");
             Status = ModuleStatus.InProgress;
             CurrentTask = dataYearMonth;
 
             Settings.Validate(config);
             this.dataYearMonth = dataYearMonth;
+            this.key = key;
             dataSourcePath = Path.Combine(Settings.AddressDataPath, dataYearMonth);
             dataOutputPath = Path.Combine(Settings.OutputPath, dataYearMonth);
 
             Message = "Verifying PAF Key";
-            Progress = 0;
-            await CheckKey(key, stoppingToken);
+            Progress = ProgressSteps.VerifyKey;
+            await VerifyAndStoreKey(stoppingToken);
 
-            Message = "Extracing from PAF executable";
-            Progress = 1;
-            await Extract(key, stoppingToken);
+            Message = "Extracting from PAF executable";
+            Progress = ProgressSteps.ExtractPaf;
+            await ExtractPafData(stoppingToken);
 
             Message = "Cleaning up from previous builds";
-            Progress = 22;
-            Cleanup(fullClean: true, stoppingToken);
+            Progress = ProgressSteps.InitialCleanup;
+            CleanupDirectories(fullClean: true, stoppingToken);
 
             Message = "Updating SMi files & dongle list";
-            Progress = 23;
+            Progress = ProgressSteps.UpdateSmi;
             UpdateSmiFiles(stoppingToken);
 
             Message = "Converting PAF data";
-            Progress = 24;
+            Progress = ProgressSteps.ConvertData;
             ConvertPafData(stoppingToken);
 
             Message = "Compiling database";
-            Progress = 47;
-            await Compile(stoppingToken);
+            Progress = ProgressSteps.Compilation;
+            await CompileDatabase(stoppingToken);
 
             Message = "Packaging database";
-            Progress = 97;
-            await Output(stoppingToken);
+            Progress = ProgressSteps.Packaging;
+            await PackageOutput(stoppingToken);
 
             Message = "Cleaning up post build";
-            Progress = 98;
-            Cleanup(fullClean: false, stoppingToken);
+            Progress = ProgressSteps.FinalCleanup;
+            CleanupDirectories(fullClean: false, stoppingToken);
 
             Message = "Updating packaged directories";
-            Progress = 99;
-            await CheckBuildComplete(stoppingToken);
+            Progress = ProgressSteps.DatabaseUpdate;
+            await UpdateBuildStatus(stoppingToken);
 
-            Progress = 100;
+            Progress = ProgressSteps.Complete;
             Status = ModuleStatus.Ready;
             Message = "";
             CurrentTask = "";
@@ -91,24 +108,31 @@ public class RoyalMailBuilder : BaseModule
         {
             Status = ModuleStatus.Ready;
             CurrentTask = "";
-            logger.LogDebug($"{e.Message}");
+            logger.LogDebug($"Build cancelled: {e.Message}");
+        }
+        catch (IOException e)
+        {
+            Status = ModuleStatus.Error;
+            logger.LogError($"File system error: {e.Message}");
         }
         catch (Exception e)
         {
             Status = ModuleStatus.Error;
-            logger.LogError($"{e.Message}");
+            logger.LogError($"Build failed: {e.Message}");
         }
     }
 
-    private async Task CheckKey(string royalKey, CancellationToken stoppingToken)
+    // Verifies and stores the PAF key in the database if it's unique
+    private async Task VerifyAndStoreKey(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
-        if (string.IsNullOrEmpty(royalKey))
+        if (string.IsNullOrEmpty(key))
         {
+            logger.LogWarning("No PAF key provided");
             return;
         }
 
@@ -116,7 +140,7 @@ public class RoyalMailBuilder : BaseModule
         {
             DataYear = int.Parse(dataYearMonth[..4]),
             DataMonth = int.Parse(dataYearMonth.Substring(4, 2)),
-            Value = royalKey,
+            Value = key,
         };
 
         bool keyInDb = context.PafKeys.Any(x => filteredKey.Value == x.Value);
@@ -127,84 +151,117 @@ public class RoyalMailBuilder : BaseModule
             context.PafKeys.Add(filteredKey);
             await context.SaveChangesAsync(stoppingToken);
         }
+        else
+        {
+            logger.LogInformation("Using existing PAF key from database");
+        }
     }
 
-    private async Task Extract(string key, CancellationToken stoppingToken)
+    // Extracts data from the PAF executable using the provided key
+    private async Task ExtractPafData(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
-        // Change so that front end still collects keys for db, but uses what it passes every time in case of mistake
-        // PafKey key = context.PafKeys.Where(x => (int.Parse(dataYearMonth.Substring(4, 2)) == x.DataMonth) && (int.Parse(dataYearMonth.Substring(0, 4)) == x.DataYear)).FirstOrDefault() ?? throw new Exception("Key not found in db");
+        string setupRmPath = Path.Combine(dataSourcePath, "SetupRM.exe");
+        if (!File.Exists(setupRmPath))
+        {
+            throw new FileNotFoundException($"SetupRM.exe not found at: {setupRmPath}");
+        }
 
         using UIA2Automation automation = new();
-        FlaUI.Core.Application app = FlaUI.Core.Application.Launch(Path.Combine(dataSourcePath, "SetupRM.exe"));
-        // Annoyingly have to do this wait because SetupRM is not created correctly, "splash screen" effect causes FlaUI to grab the window before the body is populated with elements
-        // Could make better with waiting for Windows control visibility or something, this is good enough though
+        FlaUI.Core.Application app = FlaUI.Core.Application.Launch(setupRmPath);
+
+        // Wait for the application to initialize
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
         Window[] windows = app.GetAllTopLevelWindows(automation);
 
-        // Check that main window elements can be found
-        // TODO: Somehow if key is wrong, look for label maybe?
-        AutomationElement keyText = windows[0].FindFirstDescendant(cf => cf.ByClassName("TEdit")) ?? throw new Exception("Could not find the window elements");
+        if (windows.Length == 0)
+        {
+            throw new Exception("Could not find the SetupRM application window");
+        }
 
+        // Enter the PAF key
+        AutomationElement keyText = windows[0].FindFirstDescendant(cf => cf.ByClassName("TEdit"));
+        if (keyText == null)
+        {
+            throw new Exception("Could not find the key input field");
+        }
         keyText.AsTextBox().Enter(key);
 
-        // 1st page
+        // Navigate through the setup wizard
+        // First page - Begin button
         AutomationElement beginButton = windows[0].FindFirstDescendant(cf => cf.ByClassName("TButton"));
+        if (beginButton == null)
+        {
+            throw new Exception("Could not find the Begin button");
+        }
         windows[0].SetForeground();
         beginButton.AsButton().Click();
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
 
-        // 2nd page
+        // Second page - Next button
         AutomationElement nextButton = windows[0].FindFirstDescendant(cf => cf.ByClassName("TButton"));
+        if (nextButton == null)
+        {
+            throw new Exception("Could not find the Next button");
+        }
         windows[0].SetForeground();
         nextButton.AsButton().Click();
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
 
-        // 3rd page
+        // Third page - Set extract path and start
         AutomationElement extractText = windows[0].FindFirstDescendant(cf => cf.ByClassName("TEdit"));
+        if (extractText == null)
+        {
+            throw new Exception("Could not find the extract path input field");
+        }
         extractText.AsTextBox().Enter(dataSourcePath);
+
         AutomationElement startButton = windows[0].FindFirstDescendant(cf => cf.ByClassName("TButton"));
+        if (startButton == null)
+        {
+            throw new Exception("Could not find the Start button");
+        }
         windows[0].SetForeground();
         startButton.AsButton().Click();
 
-        // Annoyingly have to wait because SetupRM hangs before moving to extract causing the WaitForExtract to miss the TProgressBar element is needs to watch
+        // Wait for extraction to complete
         await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
-
-        await WaitForExtract(windows, stoppingToken);
+        await WaitForExtraction(windows, stoppingToken);
 
         windows[0].Close();
     }
 
-    private void Cleanup(bool fullClean, CancellationToken stoppingToken)
+    // Cleans up directories before or after the build process
+    // fullClean: If true, cleans both working and output directories; otherwise, only cleans working directory
+    private void CleanupDirectories(bool fullClean, CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
-        // Kill process that may be running in the background from previous runs
+        // Terminate any running RoyalMail processes
         Utils.KillRmProcs();
 
-        // Ensure working and output directories are created and clear them if they already exist
+        // Ensure directories exist
         Directory.CreateDirectory(Settings.WorkingPath);
         Directory.CreateDirectory(dataOutputPath);
 
-        // Cleanup just working path
-        if (!fullClean)
-        {
-            Utils.Cleanup(Settings.WorkingPath, stoppingToken);
-            return;
-        }
-
-        // Cleanup working and output path
+        // Clean working directory
         Utils.Cleanup(Settings.WorkingPath, stoppingToken);
-        Utils.Cleanup(dataOutputPath, stoppingToken);
+
+        // Clean output directory if full clean requested
+        if (fullClean)
+        {
+            Utils.Cleanup(dataOutputPath, stoppingToken);
+        }
     }
 
+    // Updates SMi files and dongle list with the current data period
     private void UpdateSmiFiles(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
@@ -212,12 +269,20 @@ public class RoyalMailBuilder : BaseModule
             return;
         }
 
-        Directory.CreateDirectory(Path.Combine(Settings.WorkingPath, "Smi"));
+        string smiPath = Path.Combine(Settings.WorkingPath, "Smi");
+        Directory.CreateDirectory(smiPath);
 
-        Utils.CopyFiles(Settings.DongleListPath, Path.Combine(Settings.WorkingPath, "Smi"));
-        Utils.CopyFiles(Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkDirectoryCreationFiles"), Path.Combine(Settings.WorkingPath, "Smi"));
+        // Copy necessary files
+        Utils.CopyFiles(Settings.DongleListPath, smiPath);
 
-        // Build for one month ahead
+        string ukDirectoryCreationFilesPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkDirectoryCreationFiles");
+        if (!Directory.Exists(ukDirectoryCreationFilesPath))
+        {
+            throw new DirectoryNotFoundException($"UkDirectoryCreationFiles directory not found at: {ukDirectoryCreationFilesPath}");
+        }
+        Utils.CopyFiles(ukDirectoryCreationFilesPath, smiPath);
+
+        // Calculate the next month for build
         int dataMonthInt = int.Parse(dataYearMonth.Substring(4, 2));
         string dataMonthString;
 
@@ -236,19 +301,33 @@ public class RoyalMailBuilder : BaseModule
             dataMonthString = "01";
         }
 
-        // Edit SMi definition xml file with updated date 
-        XmlDocument defintionFile = new();
-        defintionFile.Load(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.xml"));
-        XmlNode root = defintionFile.DocumentElement;
-        root.Attributes[1].Value = "Y" + dataYearMonth[..4] + "M" + dataMonthString;
-        defintionFile.Save(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.xml"));
+        // Update XML definition file with new date
+        string xmlFilePath = Path.Combine(smiPath, "UK_RM_CM.xml");
+        if (!File.Exists(xmlFilePath))
+        {
+            throw new FileNotFoundException($"UK_RM_CM.xml not found at: {xmlFilePath}");
+        }
 
-        // Edit Uk dongle list with updated date
-        using (StreamWriter sw = new(Path.Combine(Settings.WorkingPath, "Smi", "DongleTemp.txt"), true, System.Text.Encoding.Unicode))
+        XmlDocument definitionFile = new();
+        definitionFile.Load(xmlFilePath);
+        XmlNode root = definitionFile.DocumentElement;
+        root.Attributes[1].Value = "Y" + dataYearMonth[..4] + "M" + dataMonthString;
+        definitionFile.Save(xmlFilePath);
+
+        // Update UK dongle list with new date
+        string dongleListPath = Path.Combine(smiPath, "UK_RM_CM.txt");
+        string tempDongleListPath = Path.Combine(smiPath, "DongleTemp.txt");
+
+        if (!File.Exists(dongleListPath))
+        {
+            throw new FileNotFoundException($"UK_RM_CM.txt not found at: {dongleListPath}");
+        }
+
+        using (StreamWriter sw = new(tempDongleListPath, true, System.Text.Encoding.Unicode))
         {
             sw.WriteLine("Date=" + dataYearMonth[..4] + dataMonthString + "19");
 
-            using StreamReader sr = new(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.txt"), System.Text.Encoding.Unicode);
+            using StreamReader sr = new(dongleListPath, System.Text.Encoding.Unicode);
             string line;
             while ((line = sr.ReadLine()) != null)
             {
@@ -256,37 +335,49 @@ public class RoyalMailBuilder : BaseModule
             }
         }
 
-        File.Delete(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.txt"));
-        File.Delete(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.lcs"));
-        File.Delete(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM_Patterns.exml"));
+        // Replace original files with updated ones
+        File.Delete(dongleListPath);
+        File.Delete(Path.Combine(smiPath, "UK_RM_CM.lcs"));
+        File.Delete(Path.Combine(smiPath, "UK_RM_CM_Patterns.exml"));
+        File.Move(tempDongleListPath, dongleListPath);
 
-        File.Move(Path.Combine(Settings.WorkingPath, "Smi", "DongleTemp.txt"), Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.txt"));
+        // Encrypt the dongle list
+        string encryptRepPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "EncryptREP.exe");
+        string encryptRepFileName = Utils.WrapQuotes(encryptRepPath);
 
-        // Encrypt new Uk dongle list, but first wrap the combined paths in quotes to get around spaced directories
-        string encryptRepFileName = Utils.WrapQuotes(Path.Combine(Directory.GetCurrentDirectory(), "Tools", "EncryptREP.exe"));
-        // Perform for LCS
-        string encryptRepArgs = "-x lcs " + Utils.WrapQuotes(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.txt"));
+        // Encrypt for LCS format
+        string encryptRepArgs = "-x lcs " + Utils.WrapQuotes(dongleListPath);
         Process encryptRep = Utils.RunProc(encryptRepFileName, encryptRepArgs);
         encryptRep.WaitForExit();
-        // Perform for ELCS
-        encryptRepArgs = "-x elcs " + Utils.WrapQuotes(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM.txt"));
+
+        // Encrypt for ELCS format
+        encryptRepArgs = "-x elcs " + Utils.WrapQuotes(dongleListPath);
         encryptRep = Utils.RunProc(encryptRepFileName, encryptRepArgs);
         encryptRep.WaitForExit();
 
-        // Encrypt patterns, but first wrap the combined paths in quotes to get around spaced directories
-        // Perform for LCS
-        string encryptPatternsFileName = Utils.WrapQuotes(Path.Combine(Directory.GetCurrentDirectory(), "Tools", "EncryptPatterns.exe"));
-        string encryptPatternsArgs = "--patterns " + Utils.WrapQuotes(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM_Patterns.xml")) + " --clickCharge";
+        // Encrypt patterns
+        string encryptPatternsPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "EncryptPatterns.exe");
+        string encryptPatternsFileName = Utils.WrapQuotes(encryptPatternsPath);
+        string patternsFilePath = Path.Combine(smiPath, "UK_RM_CM_Patterns.xml");
+
+        if (!File.Exists(patternsFilePath))
+        {
+            throw new FileNotFoundException($"UK_RM_CM_Patterns.xml not found at: {patternsFilePath}");
+        }
+
+        string encryptPatternsArgs = "--patterns " + Utils.WrapQuotes(patternsFilePath) + " --clickCharge";
         Process encryptPatterns = Utils.RunProc(encryptPatternsFileName, encryptPatternsArgs);
         encryptPatterns.WaitForExit();
 
-        // If this file wasn't created then EncryptPatterns silently failed, likeliest cause is missing a redistributable
-        if (!File.Exists(Path.Combine(Settings.WorkingPath, "Smi", "UK_RM_CM_Patterns.exml")))
+        // Verify encryption was successful
+        string encryptedPatternsPath = Path.Combine(smiPath, "UK_RM_CM_Patterns.exml");
+        if (!File.Exists(encryptedPatternsPath))
         {
             throw new Exception("Missing C++ 2010 x86 redistributable, EncryptPatterns and DirectoryDataCompiler 1.9 won't work. Also check that SQL CE is installed for 1.9");
         }
     }
 
+    // Converts PAF data to the required format
     private void ConvertPafData(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
@@ -294,31 +385,48 @@ public class RoyalMailBuilder : BaseModule
             return;
         }
 
-        // Move address data files to working folder "Db"
-        Utils.CopyFiles(Path.Combine(dataSourcePath, "PAF COMPRESSED STD"), Path.Combine(Settings.WorkingPath, "Db"));
-        Utils.CopyFiles(Path.Combine(dataSourcePath, "ALIAS"), Path.Combine(Settings.WorkingPath, "Db"));
+        string dbPath = Path.Combine(Settings.WorkingPath, "Db");
+        Directory.CreateDirectory(dbPath);
 
-        // Start ConvertPafData tool, listen for output
-        string convertPafDataFileName = Utils.WrapQuotes(Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", "ConvertPafData.exe"));
-        string convertPafDataArgs = "--pafPath " + Utils.WrapQuotes(Path.Combine(Settings.WorkingPath, "Db")) + " --lastPafFileNum 15";
+        // Copy address data files to working folder
+        string pafCompressedPath = Path.Combine(dataSourcePath, "PAF COMPRESSED STD");
+        if (!Directory.Exists(pafCompressedPath))
+        {
+            throw new DirectoryNotFoundException($"PAF COMPRESSED STD directory not found at: {pafCompressedPath}");
+        }
+        Utils.CopyFiles(pafCompressedPath, dbPath);
+
+        string aliasPath = Path.Combine(dataSourcePath, "ALIAS");
+        if (!Directory.Exists(aliasPath))
+        {
+            throw new DirectoryNotFoundException($"ALIAS directory not found at: {aliasPath}");
+        }
+        Utils.CopyFiles(aliasPath, dbPath);
+
+        // Run ConvertPafData tool
+        string convertPafDataPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", "ConvertPafData.exe");
+        string convertPafDataFileName = Utils.WrapQuotes(convertPafDataPath);
+        string convertPafDataArgs = "--pafPath " + Utils.WrapQuotes(dbPath) + " --lastPafFileNum 15";
         Process convertPafData = Utils.RunProc(convertPafDataFileName, convertPafDataArgs);
 
+        // Monitor the conversion process
         using (StreamReader sr = convertPafData.StandardOutput)
         {
             string line;
-            Regex match = new(@"fpcompst.c\d\d");
-            Regex error = new(@"\[E\]");
+            Regex matchPattern = new(@"fpcompst.c\d\d");
+            Regex errorPattern = new(@"\[E\]");
+
             while ((line = sr.ReadLine()) != null)
             {
-                Match errorFound = error.Match(line);
-
+                // Check for errors
+                Match errorFound = errorPattern.Match(line);
                 if (errorFound.Success)
                 {
-                    throw new Exception("Error detected in ConvertPafData");
+                    throw new Exception("Error detected in ConvertPafData: " + line);
                 }
 
-                Match matchFound = match.Match(line);
-
+                // Log progress
+                Match matchFound = matchPattern.Match(line);
                 if (matchFound.Success)
                 {
                     logger.LogDebug($"ConvertPafData processing file: {matchFound.Value}");
@@ -326,119 +434,267 @@ public class RoyalMailBuilder : BaseModule
             }
         }
 
-        // Copy CovertPafData finished result to SMi build files folder
-        File.Copy(Path.Combine(Settings.WorkingPath, "Db", "Uk.txt"), Path.Combine(Settings.WorkingPath, "Smi", "Uk.txt"), true);
+        // Copy the conversion result to SMi build files folder
+        string ukTextPath = Path.Combine(dbPath, "Uk.txt");
+        string smiUkTextPath = Path.Combine(Settings.WorkingPath, "Smi", "Uk.txt");
+
+        if (!File.Exists(ukTextPath))
+        {
+            throw new FileNotFoundException($"Uk.txt not found at: {ukTextPath}");
+        }
+
+        File.Copy(ukTextPath, smiUkTextPath, true);
     }
 
-    private async Task Compile(CancellationToken stoppingToken)
-    {
-        List<Task> tasks =
-        [
-            Task.Run(() => CompileRunner("3.0"), stoppingToken),
-            // Task.Run(() => CompileRunner("1.9"), stoppingToken)
-        ];
-
-        await Task.WhenAll(tasks);
-    }
-
-    private async Task Output(CancellationToken stoppingToken)
-    {
-        List<Task> tasks =
-        [
-            Task.Run(() => OutputRunner("3.0"), stoppingToken),
-            // Task.Run(() => OutputRunner("1.9"), stoppingToken)
-        ];
-
-        await Task.WhenAll(tasks);
-    }
-
-    private async Task CheckBuildComplete(CancellationToken stoppingToken)
+    // Compiles the database for different versions
+    private async Task CompileDatabase(CancellationToken stoppingToken)
     {
         if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
-        Bundle bundle = context.RoyalBundles().Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
-        bundle.IsBuildComplete = true;
-        bundle.CompileTimestamp = DateTime.Now;
+        List<Task> tasks =
+        [
+            Task.Run(() => CompileVersion("3.0"), stoppingToken),
+            // Task.Run(() => CompileVersion("1.9"), stoppingToken)
+        ];
 
-        await context.SaveChangesAsync(stoppingToken);
-        SendDbUpdate = true;
+        await Task.WhenAll(tasks);
     }
 
-    private async Task WaitForExtract(Window[] windows, CancellationToken stoppingToken)
+    // Packages the compiled output for different versions
+    private async Task PackageOutput(CancellationToken stoppingToken)
     {
-        AutomationElement progressbar = windows[0].FindFirstDescendant(cf => cf.ByClassName("TProgressBar"));
-
-        if (progressbar == null)
+        if (stoppingToken.IsCancellationRequested)
         {
             return;
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
-        await WaitForExtract(windows, stoppingToken);
+        List<Task> tasks =
+        [
+            Task.Run(() => PackageVersion("3.0"), stoppingToken),
+            // Task.Run(() => PackageVersion("1.9"), stoppingToken)
+        ];
+
+        await Task.WhenAll(tasks);
     }
 
-    private void CompileRunner(string version)
+    // Updates the database to mark the build as complete
+    private async Task UpdateBuildStatus(CancellationToken stoppingToken)
     {
-        Directory.CreateDirectory(Path.Combine(Settings.WorkingPath, version));
-
-        foreach (string file in new List<string> { "UK_RM_CM.xml", "UK_RM_CM_Patterns.xml", "UK_RM_CM_Patterns.exml", "UK_RM_CM_Settings.xml", "UK_RM_CM.lcs", "UK_RM_CM.elcs", "BFPO.txt", "UK.txt", "Country.txt", "County.txt", "PostTown.txt", "StreetDescriptor.txt", "StreetName.txt", "PoBoxName.txt", "SubBuildingDesignator.txt", "OrganizationName.txt", "Country_Alias.txt", "UK_IgnorableWordsTable.txt", "UK_WordMatchTable.txt" })
+        if (stoppingToken.IsCancellationRequested)
         {
-            File.Copy(Path.Combine(Settings.WorkingPath, "Smi", file), Path.Combine(Settings.WorkingPath, version, file), true);
+            return;
         }
 
-        string directoryDataCompilerFileName = Utils.WrapQuotes(Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", version, "DirectoryDataCompiler.exe"));
-        string directoryDataCompilerArgs = "--definition " + Utils.WrapQuotes(Path.Combine(Settings.WorkingPath, version, "UK_RM_CM.xml")) + " --patterns " + Utils.WrapQuotes(Path.Combine(Settings.WorkingPath, version, "UK_RM_CM_Patterns.xml")) + " --password M0ntyPyth0n --licensed";
-        Process directoryDataCompiler = Utils.RunProc(directoryDataCompilerFileName, directoryDataCompilerArgs);
+        // Find the bundle record for this data period
+        Bundle bundle = context.RoyalBundles().Where(x => dataYearMonth == x.DataYearMonth).FirstOrDefault();
 
-        using StreamReader sr = directoryDataCompiler.StandardOutput;
+        // Only update if bundle exists
+        if (bundle != null)
+        {
+            bundle.IsBuildComplete = true;
+            bundle.CompileTimestamp = DateTime.Now;
+
+            await context.SaveChangesAsync(stoppingToken);
+            SendDbUpdate = true;
+        }
+        else
+        {
+            logger.LogWarning($"No bundle record found for {dataYearMonth}. Database not updated.");
+        }
+    }
+
+    // Waits for the extraction process to complete
+    private async Task WaitForExtraction(Window[] windows, CancellationToken stoppingToken)
+    {
+        if (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        // Non-recursive implementation to avoid stack overflow
+        int maxAttempts = 30; // Maximum number of attempts (15 minutes total)
+        int attempt = 0;
+
+        while (attempt < maxAttempts)
+        {
+            if (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            AutomationElement progressbar = windows[0].FindFirstDescendant(cf => cf.ByClassName("TProgressBar"));
+
+            // If progress bar is no longer present, extraction is complete
+            if (progressbar == null)
+            {
+                logger.LogInformation("Extraction completed");
+                return;
+            }
+
+            logger.LogDebug($"Waiting for extraction to complete (attempt {attempt + 1}/{maxAttempts})");
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            attempt++;
+        }
+
+        logger.LogWarning("Extraction wait time exceeded, continuing with process");
+    }
+
+    // Compiles the database for a specific version
+    private void CompileVersion(string version)
+    {
+        string versionPath = Path.Combine(Settings.WorkingPath, version);
+        Directory.CreateDirectory(versionPath);
+
+        // Copy required files to version directory
+        string smiPath = Path.Combine(Settings.WorkingPath, "Smi");
+        List<string> filesToCopy = new List<string>
+        {
+            "UK_RM_CM.xml",
+            "UK_RM_CM_Patterns.xml",
+            "UK_RM_CM_Patterns.exml",
+            "UK_RM_CM_Settings.xml",
+            "UK_RM_CM.lcs",
+            "UK_RM_CM.elcs",
+            "BFPO.txt",
+            "UK.txt",
+            "Country.txt",
+            "County.txt",
+            "PostTown.txt",
+            "StreetDescriptor.txt",
+            "StreetName.txt",
+            "PoBoxName.txt",
+            "SubBuildingDesignator.txt",
+            "OrganizationName.txt",
+            "Country_Alias.txt",
+            "UK_IgnorableWordsTable.txt",
+            "UK_WordMatchTable.txt"
+        };
+
+        foreach (string file in filesToCopy)
+        {
+            string sourcePath = Path.Combine(smiPath, file);
+            string destPath = Path.Combine(versionPath, file);
+
+            if (File.Exists(sourcePath))
+            {
+                File.Copy(sourcePath, destPath, true);
+            }
+            else
+            {
+                logger.LogWarning($"File not found for compilation: {sourcePath}");
+            }
+        }
+
+        // Run DirectoryDataCompiler for this version
+        string compilerPath = Path.Combine(Directory.GetCurrentDirectory(), "Tools", "UkBuildTools", version, "DirectoryDataCompiler.exe");
+        string compilerFileName = Utils.WrapQuotes(compilerPath);
+        string definitionPath = Path.Combine(versionPath, "UK_RM_CM.xml");
+        string patternsPath = Path.Combine(versionPath, "UK_RM_CM_Patterns.xml");
+
+        string compilerArgs = "--definition " + Utils.WrapQuotes(definitionPath) +
+                              " --patterns " + Utils.WrapQuotes(patternsPath) +
+                              " --password M0ntyPyth0n --licensed";
+
+        Process compiler = Utils.RunProc(compilerFileName, compilerArgs);
+
+        // Monitor the compilation process
+        using StreamReader sr = compiler.StandardOutput;
         string line;
-        int linesRead;
-        Regex match = new(@"\d\d\d\d\d");
-        Regex error = new(@"\[E\]");
+        Regex addressCountPattern = new(@"\d\d\d\d\d");
+        Regex errorPattern = new(@"\[E\]");
+        int linesRead = 0;
 
         while ((line = sr.ReadLine()) != null)
         {
-            Match errorFound = error.Match(line);
-
+            // Check for errors
+            Match errorFound = errorPattern.Match(line);
             if (errorFound.Success)
             {
-                throw new Exception($"Error detected in DirectoryDataCompiler {version}");
+                throw new Exception($"Error detected in DirectoryDataCompiler {version}: {line}");
             }
 
-            Match matchFound = match.Match(line);
-
+            // Log progress
+            Match matchFound = addressCountPattern.Match(line);
             if (matchFound.Success)
             {
                 linesRead = int.Parse(matchFound.Value);
                 if (linesRead % 5000 == 0)
                 {
-                    logger.LogDebug($"DirectoryDataCompiler {version} addresses processed: {matchFound.Value}");
+                    logger.LogDebug($"DirectoryDataCompiler {version} addresses processed: {linesRead}");
                 }
             }
         }
+
+        logger.LogInformation($"Compilation completed for version {version}, processed {linesRead} addresses");
     }
 
-    private void OutputRunner(string version)
+    // Packages the output for a specific version
+    private void PackageVersion(string version)
     {
-        Directory.CreateDirectory(Path.Combine(dataOutputPath, version, "UK_RM_CM"));
+        string versionOutputPath = Path.Combine(dataOutputPath, version, "UK_RM_CM");
+        Directory.CreateDirectory(versionOutputPath);
 
-        foreach (string file in new List<string> { "UK_IgnorableWordsTable.txt", "UK_RM_CM_Patterns.exml", "UK_WordMatchTable.txt", "UK_RM_CM.lcs", "UK_RM_CM.elcs", "UK_RM_CM.smi" })
+        // Copy required files to output directory
+        string versionPath = Path.Combine(Settings.WorkingPath, version);
+        List<string> filesToCopy = new List<string>
         {
-            File.Copy(Path.Combine(Settings.WorkingPath, version, file), Path.Combine(dataOutputPath, version, "UK_RM_CM", file), true);
+            "UK_IgnorableWordsTable.txt",
+            "UK_RM_CM_Patterns.exml",
+            "UK_WordMatchTable.txt",
+            "UK_RM_CM.lcs",
+            "UK_RM_CM.elcs",
+            "UK_RM_CM.smi"
+        };
+
+        foreach (string file in filesToCopy)
+        {
+            string sourcePath = Path.Combine(versionPath, file);
+            string destPath = Path.Combine(versionOutputPath, file);
+
+            if (File.Exists(sourcePath))
+            {
+                File.Copy(sourcePath, destPath, true);
+            }
+            else
+            {
+                logger.LogWarning($"File not found for packaging: {sourcePath}");
+            }
         }
 
-        File.Copy(Path.Combine(Settings.WorkingPath, version, "UK_RM_CM_Settings.xml"), Path.Combine(dataOutputPath, version, "UK_RM_CM_Settings.xml"), true);
+        // Copy settings file to version directory
+        string settingsSourcePath = Path.Combine(versionPath, "UK_RM_CM_Settings.xml");
+        string settingsDestPath = Path.Combine(dataOutputPath, version, "UK_RM_CM_Settings.xml");
 
+        if (File.Exists(settingsSourcePath))
+        {
+            File.Copy(settingsSourcePath, settingsDestPath, true);
+        }
+        else
+        {
+            logger.LogWarning($"Settings file not found for packaging: {settingsSourcePath}");
+        }
+
+        // Remove version-specific files
         if (version == "1.9")
         {
-            File.Delete(Path.Combine(dataOutputPath, version, "UK_RM_CM", "UK_RM_CM.elcs"));
+            string elcsPath = Path.Combine(versionOutputPath, "UK_RM_CM.elcs");
+            if (File.Exists(elcsPath))
+            {
+                File.Delete(elcsPath);
+            }
         }
-        if (version == "3.0")
+        else if (version == "3.0")
         {
-            File.Delete(Path.Combine(dataOutputPath, version, "UK_RM_CM", "UK_RM_CM.lcs"));
+            string lcsPath = Path.Combine(versionOutputPath, "UK_RM_CM.lcs");
+            if (File.Exists(lcsPath))
+            {
+                File.Delete(lcsPath);
+            }
         }
+
+        logger.LogInformation($"Packaging completed for version {version}");
     }
 }
